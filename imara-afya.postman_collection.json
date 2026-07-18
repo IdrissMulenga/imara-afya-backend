@@ -1,0 +1,111 @@
+{
+  "info": {
+    "name": "Imara Afya API",
+    "description": "GraphQL API for the Imara Afya health app. Endpoint assumed at {{baseUrl}} (graphql-yoga default). Update `baseUrl` if your server mounts GraphQL elsewhere.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:4000/graphql",
+      "description": "The GraphQL endpoint. Change the port/path if needed."
+    },
+    {
+      "key": "token",
+      "value": "",
+      "description": "JWT set automatically after a successful Signup."
+    }
+  ],
+  "item": [
+    {
+      "name": "Signup",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// save the returned JWT into the collection so the next requests can use it",
+              "const res = pm.response.json();",
+              "if (res && res.data && res.data.signup && res.data.signup.token) {",
+              "  pm.collectionVariables.set('token', res.data.signup.token);",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "graphql",
+          "graphql": {
+            "query": "mutation Signup($input: SignUpInput!) {\n  signup(input: $input) {\n    token\n    user {\n      id\n      firstName\n      lastName\n      email\n      agreedToTerms\n      image\n      height\n      weight\n      gender\n      religion\n    }\n  }\n}",
+            "variables": "{\n  \"input\": {\n    \"firstName\": \"Idriss\",\n    \"lastName\": \"Mulenga\",\n    \"email\": \"idriss@example.com\",\n    \"password\": \"secret123\",\n    \"agreeToTerms\": true\n  }\n}"
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}",
+          "host": ["{{baseUrl}}"]
+        },
+        "description": "Creates an account. Requires agreeToTerms = true, otherwise it fails with TERMS_NOT_ACCEPTED."
+      }
+    },
+    {
+      "name": "Complete Profile",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{token}}", "type": "string" }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "graphql",
+          "graphql": {
+            "query": "mutation CompleteProfile($input: CompleteProfileInput!) {\n  completeProfile(input: $input) {\n    id\n    firstName\n    lastName\n    email\n    image\n    height\n    weight\n    gender\n    religion\n    agreedToTerms\n  }\n}",
+            "variables": "{\n  \"input\": {\n    \"image\": \"https://example.com/me.jpg\",\n    \"height\": 180,\n    \"weight\": 75,\n    \"gender\": \"Man\",\n    \"religion\": \"Muslim\"\n  }\n}"
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}",
+          "host": ["{{baseUrl}}"]
+        },
+        "description": "Adds profile details after signup. Requires the Bearer token from Signup. gender must be Man or Woman; religion must be Muslim or Christian."
+      }
+    },
+    {
+      "name": "Me",
+      "request": {
+        "auth": {
+          "type": "bearer",
+          "bearer": [
+            { "key": "token", "value": "{{token}}", "type": "string" }
+          ]
+        },
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "graphql",
+          "graphql": {
+            "query": "query Me {\n  me {\n    id\n    firstName\n    lastName\n    email\n    image\n    height\n    weight\n    gender\n    religion\n    agreedToTerms\n  }\n}",
+            "variables": "{}"
+          }
+        },
+        "url": {
+          "raw": "{{baseUrl}}",
+          "host": ["{{baseUrl}}"]
+        },
+        "description": "Returns the currently authenticated user. Requires the Bearer token."
+      }
+    }
+  ]
+}
