@@ -8,6 +8,13 @@ export type SignupArgs = {
     };
 };
 
+export type LoginArgs = {
+    input: {
+        email: string;
+        password: string;
+    };
+};
+
 export type CompleteProfileArgs = {
     input: {
         image?: string;

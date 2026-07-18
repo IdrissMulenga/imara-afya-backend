@@ -2,7 +2,7 @@ import User from './../../models/user.js';
 import type { Context } from "../context.js"
 import { authCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
-import type { SignupArgs, CompleteProfileArgs } from "../../utils/types.js"
+import type { SignupArgs, LoginArgs, CompleteProfileArgs } from "../../utils/types.js"
 import { generateToken } from "../../services/authServices.js"
 import bcrypt from "bcryptjs"
 
@@ -79,6 +79,50 @@ export default {
 
         throw new GraphQLError('Unexpected error while creating account', {
           extensions: { code: 'SIGNUP_FAILED' },
+        });
+      }
+    },
+
+    //LOGIN MUTATION
+      login: async (_: unknown, { input }: LoginArgs) => {
+
+          const { password } = input
+
+          //normalize email the same way we do on signup
+          const email = input.email.trim().toLowerCase()
+
+      try {
+        //find user by email, pull the password back in since it's select: false
+        const user = await User.findOne({ email }).select('+password');
+
+        //keep the message generic so we don't leak which part was wrong
+        if (!user) {
+          throw new GraphQLError('Invalid email or password', {
+            extensions: { code: 'INVALID_CREDENTIALS' },
+          });
+        }
+
+        //compare the plain password with the stored hash
+        const isMatch = await bcrypt.compare(password, user.password);
+
+        if (!isMatch) {
+          throw new GraphQLError('Invalid email or password', {
+            extensions: { code: 'INVALID_CREDENTIALS' },
+          });
+        }
+
+        // generate token for the user with they id
+        const token = generateToken(user.id);
+
+        //return user object and user's token
+        return { token, user };
+      } catch (error: any) {
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+
+        throw new GraphQLError('Unexpected error while logging in', {
+          extensions: { code: 'LOGIN_FAILED' },
         });
       }
     },

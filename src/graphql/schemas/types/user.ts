@@ -39,3 +39,10 @@ export const completeProfileInput = /* GraphQL */ `
         religion: String
     }
 `;
+
+export const loginInput = /* GraphQL */ `
+    input LoginInput {
+        email: String!
+        password: String!
+    }
+`;
