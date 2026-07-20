@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import { envConf } from './envConf.js';
 
-
 export const connectDB = async () => { 
     try {
         await mongoose.connect(envConf.MONGODB_URI)

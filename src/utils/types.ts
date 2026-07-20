@@ -24,3 +24,27 @@ export type CompleteProfileArgs = {
         religion?: string;
     };
 };
+
+export type MyHealthRecordsArgs = {
+    type?: string;
+};
+
+export type AddHealthRecordArgs = {
+    input: {
+        type: string;
+        name: string;
+        note?: string;
+    };
+};
+
+export type UpdateHealthRecordArgs = {
+    id: string;
+    input: {
+        name?: string;
+        note?: string;
+    };
+};
+
+export type RemoveHealthRecordArgs = {
+    id: string;
+};
