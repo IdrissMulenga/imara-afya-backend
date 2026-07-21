@@ -3,6 +3,19 @@ import mongoose from "mongoose"
 const { Schema, model } = mongoose
 
 
+const attachmentSchema = new Schema({
+    url: {
+        type: String,
+        required: true,
+        trim: true
+    },
+    name: {
+        type: String,
+        trim: true
+    }
+}, { timestamps: true })
+
+
 const healthRecordSchema = new Schema({
     user: {
         type: Schema.Types.ObjectId,
@@ -22,6 +35,10 @@ const healthRecordSchema = new Schema({
     note: {
         type: String,
         trim: true
+    },
+    attachments: {
+        type: [attachmentSchema],
+        default: []
     }
 }, { timestamps: true })
 

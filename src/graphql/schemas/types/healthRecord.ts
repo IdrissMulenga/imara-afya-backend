@@ -4,6 +4,22 @@ export const healthRecordType = /* GraphQL */ `
         type: String!
         name: String!
         note: String
+        attachments: [Attachment!]!
+    }
+`;
+
+export const attachmentType = /* GraphQL */ `
+    type Attachment {
+        id: ID!
+        url: String!
+        name: String
+    }
+`;
+
+export const addAttachmentInput = /* GraphQL */ `
+    input AddAttachmentInput {
+        url: String!
+        name: String
     }
 `;
 
