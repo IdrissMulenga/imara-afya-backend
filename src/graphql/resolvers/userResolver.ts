@@ -29,7 +29,7 @@ export default {
     //SIGNUP MUTATION
       signup: async (_: unknown, { input }: SignupArgs) => {
 
-          const { firstName, lastName, password, agreeToTerms } = input
+          const { firstName, lastName, password, gender, agreeToTerms } = input
 
           //normalize email so we don't create duplicates with different casing
           const email = input.email.trim().toLowerCase()
@@ -56,7 +56,7 @@ export default {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // create a user with hashed password and record when they agreed to the terms
-        const user = new User({ firstName, lastName, email, password: hashedPassword, agreedToTerms: true, agreedToTermsAt: new Date() });
+        const user = new User({ firstName, lastName, email, password: hashedPassword, gender, agreedToTerms: true, agreedToTermsAt: new Date() });
 
         // save user to database
         await user.save();
@@ -133,7 +133,7 @@ export default {
           //make sure the user is logged in before updating profile
           authCheck(context);
 
-          const { image, height, weight, gender, religion } = input
+          const { image, height, weight, religion } = input
 
       try {
         //grab the logged in user from context
@@ -143,7 +143,6 @@ export default {
         if (image !== undefined) user.set('image', image);
         if (height !== undefined) user.set('height', height);
         if (weight !== undefined) user.set('weight', weight);
-        if (gender !== undefined) user.set('gender', gender);
         if (religion !== undefined) user.set('religion', religion);
 
         // save updated user to database
@@ -165,6 +164,34 @@ export default {
 
         throw new GraphQLError('Unexpected error while updating profile', {
           extensions: { code: 'PROFILE_UPDATE_FAILED' },
+        });
+      }
+    },
+
+    //UPGRADE TO PREMIUM MUTATION
+      upgradeToPremium: async (_: unknown, __: unknown, context: Context) => {
+
+          //must be logged in to upgrade
+          authCheck(context);
+
+      try {
+        //flip the logged in user's plan to premium
+        const user = context.user!;
+
+        user.set('plan', 'premium');
+
+        // save updated user to database
+        await user.save();
+
+        //return the updated user
+        return user;
+      } catch (error: any) {
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+
+        throw new GraphQLError('Unexpected error while upgrading plan', {
+          extensions: { code: 'UPGRADE_FAILED' },
         });
       }
     },

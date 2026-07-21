@@ -10,6 +10,7 @@ export const userType = /* GraphQL */ `
         weight: Float
         gender: String
         religion: String
+        plan: String!
     }
 `;
 
@@ -26,6 +27,7 @@ export const signUpInput = /* GraphQL */ `
         lastName: String!
         email: String!
         password: String!
+        gender: String!
         agreeToTerms: Boolean!
     }
 `;
@@ -35,7 +37,6 @@ export const completeProfileInput = /* GraphQL */ `
         image: String
         height: Float
         weight: Float
-        gender: String
         religion: String
     }
 `;
