@@ -4,11 +4,7 @@ import { typeDefs } from './graphql/schemas/index.js';
 import { resolvers } from './graphql/resolvers/index.js';
 import { context } from "./graphql/context.js"
 
-
-
-
 const app = express()
-
 
 const schema = createSchema({ typeDefs, resolvers })
 
@@ -18,6 +14,5 @@ const Yoga = createYoga({
 })
 
 app.use("/graphql", Yoga)
-
 
 export default app

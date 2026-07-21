@@ -8,7 +8,6 @@ export type Context = {
 };
 
 
-
 const getBearerToken = (authHeader: string) => {
     const [scheme, token] = authHeader.trim().split(/\s+/, 2);
 
@@ -18,7 +17,6 @@ const getBearerToken = (authHeader: string) => {
 
     return token;
 };
-
 
 
 export const context = async (initialContext: YogaInitialContext): Promise<Context> => {
