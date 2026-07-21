@@ -1,8 +1,8 @@
 import HealthRecord from './../../models/healthRecord.js';
 import type { Context } from "../context.js"
-import { authCheck } from './../../services/authServices.js';
+import { authCheck, premiumCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
-import type { MyHealthRecordsArgs, AddHealthRecordArgs, UpdateHealthRecordArgs, RemoveHealthRecordArgs } from "../../utils/types.js"
+import type { MyHealthRecordsArgs, AddHealthRecordArgs, UpdateHealthRecordArgs, RemoveHealthRecordArgs, AddAttachmentArgs, RemoveAttachmentArgs } from "../../utils/types.js"
 
 
 
@@ -110,6 +110,81 @@ export default {
 
         throw new GraphQLError('Unexpected error while removing record', {
           extensions: { code: 'RECORD_DELETE_FAILED' },
+        });
+      }
+    },
+
+    //ADD AN ATTACHMENT TO A RECORD (PREMIUM)
+    addAttachment: async (_: unknown, { recordId, input }: AddAttachmentArgs, context: Context) => {
+      authCheck(context);
+      premiumCheck(context);
+
+      const { url, name } = input
+
+      try {
+        //make sure the record exists and belongs to this user
+        const record = await HealthRecord.findOne({ _id: recordId, user: context.user!.id });
+
+        if (!record) {
+          throw new GraphQLError('Health record not found', {
+            extensions: { code: 'RECORD_NOT_FOUND' },
+          });
+        }
+
+        //push the new attachment onto the record
+        record.get('attachments').push({ url, name });
+
+        await record.save();
+
+        return record;
+      } catch (error: any) {
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+
+        throw new GraphQLError('Unexpected error while adding attachment', {
+          extensions: { code: 'ATTACHMENT_ADD_FAILED' },
+        });
+      }
+    },
+
+    //REMOVE AN ATTACHMENT FROM A RECORD (PREMIUM)
+    removeAttachment: async (_: unknown, { recordId, attachmentId }: RemoveAttachmentArgs, context: Context) => {
+      authCheck(context);
+      premiumCheck(context);
+
+      try {
+        //make sure the record exists and belongs to this user
+        const record = await HealthRecord.findOne({ _id: recordId, user: context.user!.id });
+
+        if (!record) {
+          throw new GraphQLError('Health record not found', {
+            extensions: { code: 'RECORD_NOT_FOUND' },
+          });
+        }
+
+        //find the attachment inside the record
+        const attachment = record.get('attachments').id(attachmentId);
+
+        if (!attachment) {
+          throw new GraphQLError('Attachment not found', {
+            extensions: { code: 'ATTACHMENT_NOT_FOUND' },
+          });
+        }
+
+        //remove it and save
+        attachment.deleteOne();
+
+        await record.save();
+
+        return record;
+      } catch (error: any) {
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+
+        throw new GraphQLError('Unexpected error while removing attachment', {
+          extensions: { code: 'ATTACHMENT_REMOVE_FAILED' },
         });
       }
     },

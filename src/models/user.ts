@@ -42,12 +42,18 @@ const userSchema = new Schema({
     },
     gender: {
         type: String,
+        required: true,
         enum: ["Man", "Woman"]
     },
     religion: {
         type: String,
         enum: ["Muslim", "Christian"],
         default: "Muslim"
+    },
+    plan: {
+        type: String,
+        enum: ["free", "premium"],
+        default: "free"
     }
 }, { timestamps: true })
 

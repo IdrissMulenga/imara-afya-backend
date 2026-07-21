@@ -31,3 +31,23 @@ export const authCheck = (context: Context) => {
         });
     }
 };
+
+
+export const premiumCheck = (context: Context) => {
+    //must be logged in and on the premium plan to use premium features
+    if (!context.user || context.user.get('plan') !== 'premium') {
+        throw new GraphQLError('This feature requires a premium plan', {
+            extensions: { code: 'PREMIUM_REQUIRED' },
+        });
+    }
+};
+
+
+export const womenOnlyCheck = (context: Context) => {
+    //period tracking is only available for users whose gender is Woman
+    if (!context.user || context.user.get('gender') !== 'Woman') {
+        throw new GraphQLError('This feature is only available for women', {
+            extensions: { code: 'WOMEN_ONLY' },
+        });
+    }
+};
