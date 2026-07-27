@@ -11,6 +11,11 @@ export const userType = /* GraphQL */ `
         gender: String
         religion: String
         plan: String!
+        role: String!
+        waterGoal: Float
+        ramadanMode: Boolean
+        suhoorTime: String
+        iftarTime: String
     }
 `;
 
@@ -34,6 +39,8 @@ export const signUpInput = /* GraphQL */ `
 
 export const completeProfileInput = /* GraphQL */ `
     input CompleteProfileInput {
+        firstName: String
+        lastName: String
         image: String
         height: Float
         weight: Float

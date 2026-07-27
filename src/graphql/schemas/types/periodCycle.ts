@@ -13,6 +13,8 @@ export const cyclePredictionType = /* GraphQL */ `
         nextPeriodDate: String
         fertileWindowStart: String
         fertileWindowEnd: String
+        daysUntilNextPeriod: Int
+        daysUntilFertileWindow: Int
     }
 `;
 

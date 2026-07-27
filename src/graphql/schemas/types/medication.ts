@@ -9,6 +9,15 @@ export const medicationType = /* GraphQL */ `
     }
 `;
 
+export const medicationDoseType = /* GraphQL */ `
+    type MedicationDose {
+        id: ID!
+        medicationId: ID!
+        status: String!
+        takenAt: String!
+    }
+`;
+
 export const addMedicationInput = /* GraphQL */ `
     input AddMedicationInput {
         name: String!

@@ -1,8 +1,8 @@
 import Hospital from './../../models/hospital.js';
 import type { Context } from "../context.js"
-import { authCheck } from './../../services/authServices.js';
+import { authCheck, adminCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
-import type { NearbyHospitalsArgs, AddHospitalArgs } from "../../utils/types.js"
+import type { NearbyHospitalsArgs, HospitalsArgs, AddHospitalArgs } from "../../utils/types.js"
 
 
 //distance in km between two lat/lng points (haversine formula)
@@ -41,17 +41,32 @@ export default {
         .filter((h) => h.distanceKm <= radius)
         .sort((a, b) => a.distanceKm - b.distanceKm);
     },
+
+    //ALL FACILITIES, OPTIONALLY FILTERED BY AREA — this is what the map screen plots
+    hospitals: async (_: unknown, { city, province, type }: HospitalsArgs, context: Context) => {
+      authCheck(context);
+
+      const filter: any = {};
+
+      //only apply the filters the caller actually sent
+      if (city) filter.city = city;
+      if (province) filter.province = province;
+      if (type) filter.type = type;
+
+      return Hospital.find(filter).sort({ name: 1 });
+    },
   },
 
   Mutation: {
-    //ADD A HOSPITAL TO THE DIRECTORY (used to seed data for now)
+    //ADD A HOSPITAL TO THE DIRECTORY (admin only — a wrong location sends someone to the wrong place)
     addHospital: async (_: unknown, { input }: AddHospitalArgs, context: Context) => {
       authCheck(context);
+      adminCheck(context);
 
-      const { name, address, phone, latitude, longitude } = input
+      const { name, address, phone, latitude, longitude, city, province, type } = input
 
       try {
-        const hospital = new Hospital({ name, address, phone, latitude, longitude });
+        const hospital = new Hospital({ name, address, phone, latitude, longitude, city, province, type });
 
         await hospital.save();
 

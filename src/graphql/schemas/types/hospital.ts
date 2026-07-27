@@ -6,6 +6,9 @@ export const hospitalType = /* GraphQL */ `
         phone: String
         latitude: Float!
         longitude: Float!
+        city: String
+        province: String
+        type: String
         distanceKm: Float
     }
 `;
@@ -17,5 +20,8 @@ export const addHospitalInput = /* GraphQL */ `
         phone: String
         latitude: Float!
         longitude: Float!
+        city: String
+        province: String
+        type: String
     }
 `;

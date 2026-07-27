@@ -24,6 +24,20 @@ const hospitalSchema = new Schema({
     longitude: {
         type: Number,
         required: true
+    },
+    //used by the map screen to filter facilities by area
+    city: {
+        type: String,
+        trim: true
+    },
+    province: {
+        type: String,
+        trim: true
+    },
+    type: {
+        type: String,
+        enum: ["hospital", "clinic", "pharmacy"],
+        default: "hospital"
     }
 }, { timestamps: true })
 

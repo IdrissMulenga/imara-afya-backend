@@ -18,6 +18,8 @@ export type LoginArgs = {
 
 export type CompleteProfileArgs = {
     input: {
+        firstName?: string;
+        lastName?: string;
         image?: string;
         height?: number;
         weight?: number;
@@ -86,6 +88,17 @@ export type RemoveMedicationArgs = {
     id: string;
 };
 
+export type MarkMedicationTakenArgs = {
+    medicationId: string;
+    takenAt?: string;
+    status?: string;
+};
+
+export type MyMedicationLogsArgs = {
+    medicationId?: string;
+    date?: string;
+};
+
 export type LogPeriodArgs = {
     input: {
         startDate: string;
@@ -105,10 +118,44 @@ export type RemovePeriodArgs = {
     id: string;
 };
 
+export type StartPregnancyArgs = {
+    input: {
+        lastPeriodDate: string;
+        note?: string;
+    };
+};
+
+export type UpdatePregnancyArgs = {
+    id: string;
+    input: {
+        lastPeriodDate?: string;
+        note?: string;
+    };
+};
+
+export type EndPregnancyArgs = {
+    id: string;
+    input: {
+        endedAt?: string;
+        outcome?: string;
+        note?: string;
+    };
+};
+
+export type RemovePregnancyArgs = {
+    id: string;
+};
+
 export type NearbyHospitalsArgs = {
     latitude: number;
     longitude: number;
     radiusKm?: number;
+};
+
+export type HospitalsArgs = {
+    city?: string;
+    province?: string;
+    type?: string;
 };
 
 export type AddHospitalArgs = {
@@ -118,5 +165,55 @@ export type AddHospitalArgs = {
         phone?: string;
         latitude: number;
         longitude: number;
+        city?: string;
+        province?: string;
+        type?: string;
+    };
+};
+
+export type LogHabitArgs = {
+    input: {
+        type: string;
+        value: number;
+        date?: string;
+    };
+};
+
+export type MyHabitLogsArgs = {
+    type: string;
+    from?: string;
+    to?: string;
+};
+
+export type RemoveHabitLogArgs = {
+    id: string;
+};
+
+export type SetWaterGoalArgs = {
+    glasses: number;
+};
+
+export type SetRamadanModeArgs = {
+    input: {
+        enabled: boolean;
+        suhoorTime?: string;
+        iftarTime?: string;
+    };
+};
+
+export type GuidanceArgs = {
+    category?: string;
+    language?: string;
+};
+
+export type AddGuidanceArgs = {
+    input: {
+        category: string;
+        kind: string;
+        title: string;
+        body: string;
+        source?: string;
+        language?: string;
+        published?: boolean;
     };
 };
