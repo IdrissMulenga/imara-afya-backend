@@ -12,6 +12,10 @@ const addDays = (date: Date, days: number) => {
     d.setDate(d.getDate() + days);
     return d.toISOString().slice(0, 10);
 };
+const todayIso = () => new Date().toISOString().slice(0, 10);
+//whole days from one date string to another (positive = in the future)
+const daysBetween = (fromIso: string, toIso: string) =>
+    Math.round((toDate(toIso).getTime() - toDate(fromIso).getTime()) / (1000 * 60 * 60 * 24));
 
 
 
@@ -57,6 +61,8 @@ export default {
           nextPeriodDate: null,
           fertileWindowStart: null,
           fertileWindowEnd: null,
+          daysUntilNextPeriod: null,
+          daysUntilFertileWindow: null,
         };
       }
 
@@ -69,12 +75,17 @@ export default {
       const fertileWindowStart = addDays(next, -19);
       const fertileWindowEnd = addDays(next, -13);
 
+      //countdowns from today — this powers the "days left until your period" reminder
+      const today = todayIso();
+
       return {
         basedOnCycles: cycles.length,
         averageCycleLength,
         nextPeriodDate,
         fertileWindowStart,
         fertileWindowEnd,
+        daysUntilNextPeriod: daysBetween(today, nextPeriodDate),
+        daysUntilFertileWindow: daysBetween(today, fertileWindowStart),
       };
     },
   },

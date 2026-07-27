@@ -6,6 +6,10 @@ import type { SignupArgs, LoginArgs, CompleteProfileArgs } from "../../utils/typ
 import { generateToken } from "../../services/authServices.js"
 import bcrypt from "bcryptjs"
 
+//max length of an inline base64 avatar (~110KB of image data once decoded).
+//the app targets ~20KB, so this is a safety net, not the normal case.
+const MAX_IMAGE_CHARS = 150_000;
+
 
 
 export default {
@@ -133,13 +137,50 @@ export default {
           //make sure the user is logged in before updating profile
           authCheck(context);
 
-          const { image, height, weight, religion } = input
+          const { firstName, lastName, image, height, weight, religion } = input
 
       try {
         //grab the logged in user from context
         const user = context.user!;
 
+        //names can be edited later, but they can't be blanked out
+        if (firstName !== undefined && !firstName.trim()) {
+          throw new GraphQLError('First name cannot be empty', {
+            extensions: { code: 'BAD_USER_INPUT' },
+          });
+        }
+        if (lastName !== undefined && !lastName.trim()) {
+          throw new GraphQLError('Last name cannot be empty', {
+            extensions: { code: 'BAD_USER_INPUT' },
+          });
+        }
+
+        //we only store an image URL (the app uploads the photo to cloudinary
+        //first) — reject anything that isn't an http(s) link so base64 blobs
+        //can't bloat the database
+        if (image !== undefined && image !== null && image !== '') {
+          //we accept either a hosted URL (if we move to a CDN later) or a small
+          //inline base64 image — the app downsizes avatars before sending
+          const isUrl = /^https?:\/\/\S+$/i.test(image);
+          const isDataImage = /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(image);
+
+          if (!isUrl && !isDataImage) {
+            throw new GraphQLError('Image must be a URL or a base64 image', {
+              extensions: { code: 'BAD_USER_INPUT' },
+            });
+          }
+
+          //hard cap so a big photo can't bloat the database (~110KB of binary)
+          if (isDataImage && image.length > MAX_IMAGE_CHARS) {
+            throw new GraphQLError('Image is too large. Please choose a smaller photo.', {
+              extensions: { code: 'IMAGE_TOO_LARGE' },
+            });
+          }
+        }
+
         //only update the fields the user actually sent
+        if (firstName !== undefined) user.set('firstName', firstName.trim());
+        if (lastName !== undefined) user.set('lastName', lastName.trim());
         if (image !== undefined) user.set('image', image);
         if (height !== undefined) user.set('height', height);
         if (weight !== undefined) user.set('weight', weight);

@@ -1,0 +1,13 @@
+const { typeDefs } = await import('./dist/graphql/schemas/index.js');
+const { resolvers } = await import('./dist/graphql/resolvers/index.js');
+const { buildSchema } = await import('graphql');
+const schema = buildSchema(typeDefs);
+const q = schema.getQueryType().getFields();
+const m = schema.getMutationType().getFields();
+console.log('QUERIES:', Object.keys(q).sort().join(', '));
+console.log('MUTATIONS:', Object.keys(m).sort().join(', '));
+const missing = [...Object.keys(q).filter(k => !resolvers.Query[k]), ...Object.keys(m).filter(k => !resolvers.Mutation[k])];
+console.log('OPS WITHOUT RESOLVER:', missing.length ? missing.join(', ') : 'none');
+console.log('USER FIELDS:', Object.keys(schema.getType('User').getFields()).join(', '));
+console.log('HOSPITAL FIELDS:', Object.keys(schema.getType('Hospital').getFields()).join(', '));
+console.log('RAMADAN FIELDS:', Object.keys(schema.getType('RamadanSchedule').getFields()).join(', '));

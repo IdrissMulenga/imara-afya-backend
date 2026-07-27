@@ -43,6 +43,16 @@ export const premiumCheck = (context: Context) => {
 };
 
 
+export const adminCheck = (context: Context) => {
+    //content that every user reads (guidance, hospital directory) is admin-only to write
+    if (!context.user || context.user.get('role') !== 'admin') {
+        throw new GraphQLError('This action requires an admin account', {
+            extensions: { code: 'ADMIN_REQUIRED' },
+        });
+    }
+};
+
+
 export const womenOnlyCheck = (context: Context) => {
     //period tracking is only available for users whose gender is Woman
     if (!context.user || context.user.get('gender') !== 'Woman') {

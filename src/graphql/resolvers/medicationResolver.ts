@@ -1,8 +1,18 @@
 import Medication from './../../models/medication.js';
+import MedicationLog from './../../models/medicationLog.js';
 import type { Context } from "../context.js"
 import { authCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
-import type { AddMedicationArgs, UpdateMedicationArgs, RemoveMedicationArgs } from "../../utils/types.js"
+import type { AddMedicationArgs, UpdateMedicationArgs, RemoveMedicationArgs, MarkMedicationTakenArgs, MyMedicationLogsArgs } from "../../utils/types.js"
+
+
+//shape a medication log document into the GraphQL MedicationDose type
+const toDose = (log: any) => ({
+  id: log.id,
+  medicationId: String(log.get('medication')),
+  status: log.get('status'),
+  takenAt: log.get('takenAt'),
+});
 
 
 
@@ -14,6 +24,21 @@ export default {
 
       //only return medications that belong to the logged in user
       return Medication.find({ user: context.user!.id }).sort({ createdAt: -1 });
+    },
+
+    //LIST DOSE LOGS (optionally for one medication and/or one day)
+    myMedicationLogs: async (_: unknown, { medicationId, date }: MyMedicationLogsArgs, context: Context) => {
+      authCheck(context);
+
+      const filter: any = { user: context.user!.id };
+
+      //optional filters: a specific medication and/or a specific day
+      if (medicationId) filter.medication = medicationId;
+      if (date) filter.takenAt = { $regex: `^${date}` };
+
+      const logs = await MedicationLog.find(filter).sort({ takenAt: -1 });
+
+      return logs.map(toDose);
     },
   },
 
@@ -101,6 +126,49 @@ export default {
 
         throw new GraphQLError('Unexpected error while removing medication', {
           extensions: { code: 'MEDICATION_DELETE_FAILED' },
+        });
+      }
+    },
+
+    //RECORD THAT A DOSE WAS TAKEN (or skipped) — powers adherence + reminders
+    markMedicationTaken: async (_: unknown, { medicationId, takenAt, status }: MarkMedicationTakenArgs, context: Context) => {
+      authCheck(context);
+
+      try {
+        //make sure the medication exists and belongs to this user
+        const medication = await Medication.findOne({ _id: medicationId, user: context.user!.id });
+
+        if (!medication) {
+          throw new GraphQLError('Medication not found', {
+            extensions: { code: 'MEDICATION_NOT_FOUND' },
+          });
+        }
+
+        //default to "now" and "taken" when the caller doesn't specify
+        const log = new MedicationLog({
+          user: context.user!.id,
+          medication: medication.id,
+          status: status ?? 'taken',
+          takenAt: takenAt ?? new Date().toISOString(),
+        });
+
+        await log.save();
+
+        return toDose(log);
+      } catch (error: any) {
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+
+        //bad status value (not in the enum) lands here
+        if (error?.name === 'ValidationError') {
+          throw new GraphQLError('Invalid dose data', {
+            extensions: { code: 'BAD_USER_INPUT' },
+          });
+        }
+
+        throw new GraphQLError('Unexpected error while logging dose', {
+          extensions: { code: 'DOSE_LOG_FAILED' },
         });
       }
     },
