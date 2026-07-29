@@ -54,3 +54,18 @@ export const loginInput = /* GraphQL */ `
         password: String!
     }
 `;
+
+export const changePasswordInput = /* GraphQL */ `
+    input ChangePasswordInput {
+        currentPassword: String!
+        newPassword: String!
+    }
+`;
+
+export const resetPasswordInput = /* GraphQL */ `
+    input ResetPasswordInput {
+        email: String!
+        token: String!
+        newPassword: String!
+    }
+`;

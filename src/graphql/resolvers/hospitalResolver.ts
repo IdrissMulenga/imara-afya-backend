@@ -3,6 +3,7 @@ import type { Context } from "../context.js"
 import { authCheck, adminCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { NearbyHospitalsArgs, HospitalsArgs, AddHospitalArgs } from "../../utils/types.js"
+import { LIMITS } from "../../utils/limits.js"
 
 
 //distance in km between two lat/lng points (haversine formula)
@@ -26,7 +27,7 @@ export default {
       //default to a 10km radius if none was passed
       const radius = radiusKm ?? 10;
 
-      const hospitals = await Hospital.find();
+      const hospitals = await Hospital.find().limit(LIMITS.hospitals);
 
       return hospitals
         .map((h) => ({
@@ -53,7 +54,7 @@ export default {
       if (province) filter.province = province;
       if (type) filter.type = type;
 
-      return Hospital.find(filter).sort({ name: 1 });
+      return Hospital.find(filter).sort({ name: 1 }).limit(LIMITS.hospitals);
     },
   },
 

@@ -3,6 +3,7 @@ import type { Context } from "../context.js"
 import { authCheck, premiumCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { MyHealthRecordsArgs, AddHealthRecordArgs, UpdateHealthRecordArgs, RemoveHealthRecordArgs, AddAttachmentArgs, RemoveAttachmentArgs } from "../../utils/types.js"
+import { LIMITS } from "../../utils/limits.js"
 
 
 
@@ -18,7 +19,7 @@ export default {
       //if a type was passed, filter by it (Condition, Allergy, Medication)
       if (type) filter.type = type;
 
-      return HealthRecord.find(filter).sort({ createdAt: -1 });
+      return HealthRecord.find(filter).sort({ createdAt: -1 }).limit(LIMITS.healthRecords);
     },
   },
 

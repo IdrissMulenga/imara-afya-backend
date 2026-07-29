@@ -42,6 +42,10 @@ const healthRecordSchema = new Schema({
     }
 }, { timestamps: true })
 
+//every read is "this user's records", optionally narrowed by type — without
+//this index mongo scans the whole collection on each one
+healthRecordSchema.index({ user: 1, type: 1, createdAt: -1 })
+
 const HealthRecord = model("HealthRecord", healthRecordSchema)
 
 

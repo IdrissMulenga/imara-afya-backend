@@ -3,6 +3,7 @@ import type { Context } from "../context.js"
 import { authCheck, womenOnlyCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { StartPregnancyArgs, UpdatePregnancyArgs, EndPregnancyArgs, RemovePregnancyArgs } from "../../utils/types.js"
+import { LIMITS } from "../../utils/limits.js"
 
 
 //same plain "YYYY-MM-DD" helpers the period tracker uses
@@ -42,7 +43,7 @@ export default {
       authCheck(context);
       womenOnlyCheck(context);
 
-      return Pregnancy.find({ user: context.user!.id }).sort({ lastPeriodDate: -1 });
+      return Pregnancy.find({ user: context.user!.id }).sort({ lastPeriodDate: -1 }).limit(LIMITS.pregnancies);
     },
 
     //WHERE THE ACTIVE PREGNANCY IS RIGHT NOW — powers the tracker screen

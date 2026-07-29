@@ -32,6 +32,9 @@ const medicationSchema = new Schema({
     }
 }, { timestamps: true })
 
+//the dashboard asks for this user's active medications on every open
+medicationSchema.index({ user: 1, active: 1, name: 1 })
+
 const Medication = model("Medication", medicationSchema)
 
 

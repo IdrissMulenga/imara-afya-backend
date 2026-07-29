@@ -3,6 +3,7 @@ import type { Context } from "../context.js"
 import { authCheck, womenOnlyCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { LogPeriodArgs, UpdatePeriodArgs, RemovePeriodArgs } from "../../utils/types.js"
+import { LIMITS } from "../../utils/limits.js"
 
 
 //small helpers to work with plain "YYYY-MM-DD" date strings
@@ -26,7 +27,7 @@ export default {
       authCheck(context);
       womenOnlyCheck(context);
 
-      return PeriodCycle.find({ user: context.user!.id }).sort({ startDate: -1 });
+      return PeriodCycle.find({ user: context.user!.id }).sort({ startDate: -1 }).limit(LIMITS.cycles);
     },
 
     //PREDICT THE NEXT PERIOD AND FERTILE WINDOW FROM PAST CYCLES
@@ -35,7 +36,7 @@ export default {
       womenOnlyCheck(context);
 
       //grab the cycles oldest first so we can measure the gaps between them
-      const cycles = await PeriodCycle.find({ user: context.user!.id }).sort({ startDate: 1 });
+      const cycles = await PeriodCycle.find({ user: context.user!.id }).sort({ startDate: 1 }).limit(LIMITS.cycles);
 
       //default to a typical 28 day cycle until we have enough data to do better
       let averageCycleLength = 28;

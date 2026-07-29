@@ -1,4 +1,4 @@
-import { userType, authPayload, signUpInput, completeProfileInput, loginInput } from './types/user.js';
+import { userType, authPayload, signUpInput, completeProfileInput, loginInput, changePasswordInput, resetPasswordInput } from './types/user.js';
 import { userQuery } from './queries/user.js';
 import { userMutation } from './mutation/user.js';
 import { healthRecordType, attachmentType, addHealthRecordInput, updateHealthRecordInput, addAttachmentInput } from './types/healthRecord.js';
@@ -36,6 +36,10 @@ export const typeDefs = /* GraphQL */ `
     ${completeProfileInput}
 
     ${loginInput}
+
+    ${changePasswordInput}
+
+    ${resetPasswordInput}
 
     ${healthRecordType}
 

@@ -4,6 +4,7 @@ import type { Context } from "../context.js"
 import { authCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { AddMedicationArgs, UpdateMedicationArgs, RemoveMedicationArgs, MarkMedicationTakenArgs, MyMedicationLogsArgs } from "../../utils/types.js"
+import { LIMITS } from "../../utils/limits.js"
 
 
 //shape a medication log document into the GraphQL MedicationDose type
@@ -23,7 +24,7 @@ export default {
       authCheck(context);
 
       //only return medications that belong to the logged in user
-      return Medication.find({ user: context.user!.id }).sort({ createdAt: -1 });
+      return Medication.find({ user: context.user!.id }).sort({ createdAt: -1 }).limit(LIMITS.medications);
     },
 
     //LIST DOSE LOGS (optionally for one medication and/or one day)
@@ -36,7 +37,7 @@ export default {
       if (medicationId) filter.medication = medicationId;
       if (date) filter.takenAt = { $regex: `^${date}` };
 
-      const logs = await MedicationLog.find(filter).sort({ takenAt: -1 });
+      const logs = await MedicationLog.find(filter).sort({ takenAt: -1 }).limit(LIMITS.medicationLogs);
 
       return logs.map(toDose);
     },
