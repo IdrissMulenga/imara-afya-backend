@@ -3,9 +3,21 @@ import { envConf } from './../config/envConf.js';
 import { GraphQLError } from "graphql"
 import type { Context } from "../graphql/context.js"
 
-export const generateToken = (userId: string) => {
+//pin the algorithm on both sides. Verifying without this lets an attacker pick
+//the algorithm in the token header, which is the classic JWT confusion attack.
+const JWT_ALGORITHM = 'HS256' as const;
+const JWT_ISSUER = 'imara-afya';
+
+//`v` is the user's tokenVersion at the moment of issue. context.ts compares it
+//against the current value and rejects the token if the user has since logged
+//out or changed their password.
+export const generateToken = (userId: string, tokenVersion = 0) => {
     try {
-        return jwt.sign({ id: userId }, envConf.JWT_SECRET, { expiresIn: '7d' });
+        return jwt.sign({ id: userId, v: tokenVersion }, envConf.JWT_SECRET, {
+            expiresIn: '7d',
+            algorithm: JWT_ALGORITHM,
+            issuer: JWT_ISSUER,
+        });
     } catch {
         throw new GraphQLError('Failed to generate auth token', {
             extensions: { code: 'TOKEN_GENERATION_FAILED' },
@@ -13,9 +25,13 @@ export const generateToken = (userId: string) => {
     }
 }
 
-export const verifyToken = (token: string) => { 
+export const verifyToken = (token: string) => {
     try {
-        return jwt.verify(token, envConf.JWT_SECRET);
+        return jwt.verify(token, envConf.JWT_SECRET, {
+            //only accept the algorithm we actually issue
+            algorithms: [JWT_ALGORITHM],
+            issuer: JWT_ISSUER,
+        });
     } catch {
         throw new GraphQLError('Invalid or expired token', {
             extensions: { code: 'UNAUTHENTICATED' },

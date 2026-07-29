@@ -3,6 +3,7 @@ import type { Context } from "../context.js"
 import { authCheck, adminCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { GuidanceArgs, AddGuidanceArgs } from "../../utils/types.js"
+import { LIMITS } from "../../utils/limits.js"
 
 
 
@@ -19,7 +20,7 @@ export default {
       if (language) filter.language = language;
 
       //religious content first so it reads like the app groups it
-      return Guidance.find(filter).sort({ kind: 1, createdAt: -1 });
+      return Guidance.find(filter).sort({ kind: 1, createdAt: -1 }).limit(LIMITS.guidance);
     },
   },
 

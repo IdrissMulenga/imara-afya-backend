@@ -3,6 +3,7 @@ import type { Context } from "../context.js"
 import { authCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { SetRamadanModeArgs } from "../../utils/types.js"
+import { LIMITS } from "../../utils/limits.js"
 
 
 //"HH:mm" in 24h form
@@ -48,7 +49,7 @@ export default {
       const suhoorTime = user.get('suhoorTime') ?? null;
       const iftarTime = user.get('iftarTime') ?? null;
 
-      const medications = await Medication.find({ user: user.id, active: true }).sort({ name: 1 });
+      const medications = await Medication.find({ user: user.id, active: true }).sort({ name: 1 }).limit(LIMITS.medications);
 
       //without the mode on, or without both times set, we can't shift anything
       const canAdjust = enabled && !!suhoorTime && !!iftarTime;

@@ -41,7 +41,15 @@ export const context = async (initialContext: YogaInitialContext): Promise<Conte
                 // Only access decoded.id if we KNOW it exists
                 const findUser = await User.findById(decoded.id);
 
-                if (findUser) user = findUser;
+                //REVOCATION CHECK. A token is only good while its version still
+                //matches the account's. Logging out or changing the password
+                //bumps that number, which retires every token issued before it.
+                const tokenVersion = typeof decoded.v === 'number' ? decoded.v : 0;
+                const currentVersion = findUser?.get('tokenVersion') ?? 0;
+
+                if (findUser && tokenVersion === currentVersion) {
+                    user = findUser;
+                }
             }
         } catch (err: any) {
             console.error('TOKEN_VERIFICATION_ERROR:', err.message);

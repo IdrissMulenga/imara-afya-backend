@@ -16,6 +16,25 @@ export type LoginArgs = {
     };
 };
 
+export type ChangePasswordArgs = {
+    input: {
+        currentPassword: string;
+        newPassword: string;
+    };
+};
+
+export type RequestPasswordResetArgs = {
+    email: string;
+};
+
+export type ResetPasswordArgs = {
+    input: {
+        email: string;
+        token: string;
+        newPassword: string;
+    };
+};
+
 export type CompleteProfileArgs = {
     input: {
         firstName?: string;

@@ -26,6 +26,11 @@ const medicationLogSchema = new Schema({
     }
 }, { timestamps: true })
 
+//this is the fastest growing collection — one row per dose, per user, per day.
+//The dashboard reads "today's doses for this user" on every single open.
+medicationLogSchema.index({ user: 1, takenAt: -1 })
+medicationLogSchema.index({ user: 1, medication: 1, takenAt: -1 })
+
 const MedicationLog = model("MedicationLog", medicationLogSchema)
 
 

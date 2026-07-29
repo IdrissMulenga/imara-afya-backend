@@ -3,6 +3,7 @@ import type { Context } from "../context.js"
 import { authCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { LogHabitArgs, MyHabitLogsArgs, RemoveHabitLogArgs, SetWaterGoalArgs } from "../../utils/types.js"
+import { LIMITS } from "../../utils/limits.js"
 
 
 //plain "YYYY-MM-DD" helpers
@@ -116,7 +117,7 @@ export default {
         if (to) filter.date.$lte = to;
       }
 
-      return HabitLog.find(filter).sort({ date: -1 }).limit(200);
+      return HabitLog.find(filter).sort({ date: -1 }).limit(LIMITS.habitLogs);
     },
   },
 

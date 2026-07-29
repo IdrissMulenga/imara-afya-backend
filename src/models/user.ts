@@ -68,6 +68,24 @@ const userSchema = new Schema({
         type: Number,
         default: 8
     },
+    //Bumped whenever the user logs out or changes their password. Every token
+    //carries the version it was issued with, so raising this instantly makes
+    //every existing token for this account invalid — that's what turns a stolen
+    //7-day token from a 7-day problem into a "log out" problem.
+    tokenVersion: {
+        type: Number,
+        default: 0
+    },
+    //sha-256 of the reset token. We never store the token itself, so a database
+    //leak doesn't hand out working reset links.
+    passwordResetTokenHash: {
+        type: String,
+        select: false
+    },
+    passwordResetExpires: {
+        type: Date,
+        select: false
+    },
     //when on, medication reminders get shifted around the fasting window
     ramadanMode: {
         type: Boolean,

@@ -18,6 +18,9 @@ const periodCycleSchema = new Schema({
     }
 }, { timestamps: true })
 
+//cycles are always read for one user, ordered by start date
+periodCycleSchema.index({ user: 1, startDate: -1 })
+
 const PeriodCycle = model("PeriodCycle", periodCycleSchema)
 
 
