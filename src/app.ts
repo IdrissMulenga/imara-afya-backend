@@ -8,6 +8,7 @@ import { context } from "./graphql/context.js"
 import { envConf } from './config/envConf.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { securityHeaders, securityPlugin } from './middleware/security.js';
+import { operationLimitPlugin } from './middleware/operationLimit.js';
 
 const app = express()
 
@@ -50,8 +51,10 @@ const Yoga = createYoga({
     //hide unexpected stack traces from clients. The GraphQLErrors we throw
     //ourselves, which carry the codes the app reads, still pass through
     maskedErrors: envConf.IS_PRODUCTION,
-    //query depth limit, plus no introspection in production
-    plugins: [securityPlugin],
+    //query depth limit, plus no introspection in production, then a per-field
+    //budget so one expensive operation can't be hammered inside an otherwise
+    //normal-looking request rate
+    plugins: [securityPlugin, operationLimitPlugin],
 })
 
 app.use("/graphql", rateLimit(), Yoga)

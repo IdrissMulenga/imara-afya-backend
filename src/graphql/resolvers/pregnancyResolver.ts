@@ -8,6 +8,7 @@ import { LIMITS } from "../../utils/limits.js"
 
 //same plain "YYYY-MM-DD" helpers the period tracker uses
 const toDate = (s: string) => new Date(s);
+
 const addDays = (date: Date, days: number) => {
     const d = new Date(date);
     d.setDate(d.getDate() + days);

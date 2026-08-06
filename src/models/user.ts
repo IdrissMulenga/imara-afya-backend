@@ -68,6 +68,15 @@ const userSchema = new Schema({
         type: Number,
         default: 8
     },
+    //Whether her cycle is predictable. This changes how much weight the app puts
+    //on its own predictions: for an irregular cycle a confident countdown is
+    //misleading, so the app says so rather than pretending.
+    //"unknown" until she answers, which is not the same as "regular".
+    cycleRegularity: {
+        type: String,
+        enum: ["regular", "irregular", "unknown"],
+        default: "unknown"
+    },
     //Bumped whenever the user logs out or changes their password. Every token
     //carries the version it was issued with, so raising this instantly makes
     //every existing token for this account invalid — that's what turns a stolen

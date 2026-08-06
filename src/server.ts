@@ -1,11 +1,15 @@
 import app from './app.js';
 import { connectDB, disconnectDB } from "./config/db.js"
+import { seedHospitals } from "./config/seed.js"
 import { envConf } from './config/envConf.js';
 
 
 const startServer = async () => {
     try {
         await connectDB()
+
+        //fills the facility directory on a fresh database, then stays quiet
+        await seedHospitals()
 
         const server = app.listen(envConf.PORT, () => {
             console.log(`server started at port ${envConf.PORT}.......`)

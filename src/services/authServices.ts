@@ -8,22 +8,46 @@ import type { Context } from "../graphql/context.js"
 const JWT_ALGORITHM = 'HS256' as const;
 const JWT_ISSUER = 'imara-afya';
 
+//HOW LONG A SLIDING SESSION MAY LIVE.
+//
+//`refreshSession` swaps a valid token for a fresh one, so someone who opens the
+//app every few days never sees a login screen. Left unbounded that would also
+//let a STOLEN token be renewed forever, so every token carries `o` — the moment
+//the password was actually typed — and renewal stops once that is 30 days old.
+//After that the password is required again, whoever is holding the phone.
+export const MAX_SESSION_DAYS = 30;
+
+const nowInSeconds = () => Math.floor(Date.now() / 1000);
+
+
 //`v` is the user's tokenVersion at the moment of issue. context.ts compares it
 //against the current value and rejects the token if the user has since logged
 //out or changed their password.
-export const generateToken = (userId: string, tokenVersion = 0) => {
+//
+//`o` is the session origin, carried forward unchanged by every renewal. Pass it
+//when refreshing; leave it out when the user has just proved who they are.
+export const generateToken = (userId: string, tokenVersion = 0, origin?: number) => {
     try {
-        return jwt.sign({ id: userId, v: tokenVersion }, envConf.JWT_SECRET, {
-            expiresIn: '7d',
-            algorithm: JWT_ALGORITHM,
-            issuer: JWT_ISSUER,
-        });
+        return jwt.sign(
+            { id: userId, v: tokenVersion, o: origin ?? nowInSeconds() },
+            envConf.JWT_SECRET,
+            {
+                expiresIn: '7d',
+                algorithm: JWT_ALGORITHM,
+                issuer: JWT_ISSUER,
+            },
+        );
     } catch {
         throw new GraphQLError('Failed to generate auth token', {
             extensions: { code: 'TOKEN_GENERATION_FAILED' },
         });
     }
 }
+
+
+//has this session been running on one password entry for too long?
+export const sessionExpired = (origin: number) =>
+    nowInSeconds() - origin > MAX_SESSION_DAYS * 24 * 60 * 60;
 
 export const verifyToken = (token: string) => {
     try {

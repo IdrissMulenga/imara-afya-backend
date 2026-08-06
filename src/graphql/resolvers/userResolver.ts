@@ -2,10 +2,11 @@ import User from './../../models/user.js';
 import type { Context } from "../context.js"
 import { authCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
-import type { SignupArgs, LoginArgs, CompleteProfileArgs, ChangePasswordArgs, RequestPasswordResetArgs, ResetPasswordArgs } from "../../utils/types.js"
+import type { SignupArgs, LoginArgs, CompleteProfileArgs, ChangePasswordArgs, RequestPasswordResetArgs, ResetPasswordArgs, DeleteAccountArgs } from "../../utils/types.js"
 import { sendMail, passwordResetEmail } from "../../services/mailService.js"
+import { purgeUserData, countUserData } from "../../services/accountService.js"
 import crypto from "node:crypto"
-import { generateToken } from "../../services/authServices.js"
+import { generateToken, sessionExpired } from "../../services/authServices.js"
 import { assertValidEmail, assertValidPassword, assertValidName, assertInRange } from "../../utils/validation.js"
 import { hit } from "../../middleware/rateLimit.js"
 import { envConf } from "../../config/envConf.js"
@@ -166,6 +167,47 @@ export default {
 
         throw new GraphQLError('Unexpected error while logging in', {
           extensions: { code: 'LOGIN_FAILED' },
+        });
+      }
+    },
+
+    //REFRESH SESSION — swap a still-valid token for a fresh one.
+    //
+    //This is what keeps someone signed in without ever making them retype a
+    //password they already typed. The app calls it at startup when its token is
+    //more than a day old; a person who opens the app weekly never sees a login
+    //screen again.
+    //
+    //It is NOT an open-ended renewal. authCheck passing already proves the token
+    //verified, hasn't expired and hasn't been revoked — but a stolen token would
+    //satisfy all three. The origin cap is what stops one being renewed forever:
+    //30 days after the password was actually typed, this refuses, and only a
+    //real login will do.
+    refreshSession: async (_: unknown, __: unknown, context: Context) => {
+      authCheck(context);
+
+      try {
+        const user = context.user!;
+        const origin = context.session?.origin ?? Math.floor(Date.now() / 1000);
+
+        if (sessionExpired(origin)) {
+          throw new GraphQLError('Your session has ended. Please sign in again.', {
+            extensions: { code: 'SESSION_EXPIRED' },
+          });
+        }
+
+        //carry the ORIGINAL origin forward — renewing must not reset the clock,
+        //or the cap above would never be reached
+        const token = generateToken(user.id, user.get('tokenVersion') ?? 0, origin);
+
+        return { token, user };
+      } catch (error: any) {
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+
+        throw new GraphQLError('Unexpected error while refreshing session', {
+          extensions: { code: 'SESSION_REFRESH_FAILED' },
         });
       }
     },
@@ -359,6 +401,72 @@ export default {
         //means a malformed code was submitted
         throw new GraphQLError('That reset code is invalid or has expired', {
           extensions: { code: 'INVALID_RESET_TOKEN' },
+        });
+      }
+    },
+
+    //DELETE ACCOUNT — permanent, and required by Google Play for any app that
+    //offers sign-up.
+    //
+    //Everything goes: health records, medicines, dose history, cycles,
+    //pregnancies, habit logs, then the account itself. There is no soft delete
+    //and no recovery window. Someone asking a health app to forget them may
+    //have a reason we are not entitled to know, so "deleted" means deleted.
+    deleteAccount: async (_: unknown, { input }: DeleteAccountArgs, context: Context) => {
+      authCheck(context);
+
+      const { password } = input
+
+      try {
+        //context.user was loaded without the password, so fetch it again
+        const user = await User.findById(context.user!.id).select('+password');
+
+        if (!user) {
+          throw new GraphQLError('User not found', {
+            extensions: { code: 'USER_NOT_FOUND' },
+          });
+        }
+
+        //Re-entering the password is the only guard on an irreversible action.
+        //An unlocked phone left on a table should not be enough to erase
+        //someone's health history.
+        const isMatch = await bcrypt.compare(password, user.password);
+
+        if (!isMatch) {
+          throw new GraphQLError('Password is incorrect', {
+            extensions: { code: 'INVALID_CREDENTIALS' },
+          });
+        }
+
+        const userId = user.id;
+
+        //owned data first, account last — if this fails halfway the account
+        //still exists and the user can try again, rather than being locked out
+        //of an account whose data is already half gone
+        const removed = await purgeUserData(userId);
+
+        const leftover = await countUserData(userId);
+
+        if (leftover > 0) {
+          //never report success on a partial deletion
+          throw new GraphQLError('Could not fully delete your data. Please contact support.', {
+            extensions: { code: 'DELETE_INCOMPLETE' },
+          });
+        }
+
+        await User.findByIdAndDelete(userId);
+
+        //counts only, no personal detail — this lands in server logs
+        console.log('ACCOUNT_DELETED:', JSON.stringify(removed));
+
+        return true;
+      } catch (error: any) {
+        if (error instanceof GraphQLError) {
+          throw error;
+        }
+
+        throw new GraphQLError('Unexpected error while deleting your account', {
+          extensions: { code: 'DELETE_FAILED' },
         });
       }
     },

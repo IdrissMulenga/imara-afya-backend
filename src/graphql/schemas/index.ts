@@ -1,4 +1,4 @@
-import { userType, authPayload, signUpInput, completeProfileInput, loginInput, changePasswordInput, resetPasswordInput } from './types/user.js';
+import { userType, authPayload, signUpInput, completeProfileInput, loginInput, changePasswordInput, resetPasswordInput, deleteAccountInput } from './types/user.js';
 import { userQuery } from './queries/user.js';
 import { userMutation } from './mutation/user.js';
 import { healthRecordType, attachmentType, addHealthRecordInput, updateHealthRecordInput, addAttachmentInput } from './types/healthRecord.js';
@@ -13,7 +13,7 @@ import { periodCycleMutation } from './mutation/periodCycle.js';
 import { pregnancyType, pregnancyProgressType, startPregnancyInput, updatePregnancyInput, endPregnancyInput } from './types/pregnancy.js';
 import { pregnancyQuery } from './queries/pregnancy.js';
 import { pregnancyMutation } from './mutation/pregnancy.js';
-import { hospitalType, addHospitalInput } from './types/hospital.js';
+import { hospitalType, mapRegionType, careMapType, careMapInput, addHospitalInput } from './types/hospital.js';
 import { hospitalQuery } from './queries/hospital.js';
 import { hospitalMutation } from './mutation/hospital.js';
 import { habitLogType, habitSummaryType, logHabitInput } from './types/habit.js';
@@ -40,6 +40,8 @@ export const typeDefs = /* GraphQL */ `
     ${changePasswordInput}
 
     ${resetPasswordInput}
+
+    ${deleteAccountInput}
 
     ${healthRecordType}
 
@@ -78,6 +80,12 @@ export const typeDefs = /* GraphQL */ `
     ${endPregnancyInput}
 
     ${hospitalType}
+
+    ${mapRegionType}
+
+    ${careMapType}
+
+    ${careMapInput}
 
     ${addHospitalInput}
 

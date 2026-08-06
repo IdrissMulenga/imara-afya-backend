@@ -35,6 +35,12 @@ export type ResetPasswordArgs = {
     };
 };
 
+export type DeleteAccountArgs = {
+    input: {
+        password: string;
+    };
+};
+
 export type CompleteProfileArgs = {
     input: {
         firstName?: string;
@@ -137,6 +143,10 @@ export type RemovePeriodArgs = {
     id: string;
 };
 
+export type SetCycleRegularityArgs = {
+    regularity: string;
+};
+
 export type StartPregnancyArgs = {
     input: {
         lastPeriodDate: string;
@@ -175,6 +185,20 @@ export type HospitalsArgs = {
     city?: string;
     province?: string;
     type?: string;
+};
+
+//every field is optional: the screen opens with no filters and no location,
+//and each one narrows the result as she supplies it
+export type CareMapArgs = {
+    input?: {
+        latitude?: number;
+        longitude?: number;
+        radiusKm?: number;
+        type?: string;
+        search?: string;
+        city?: string;
+        province?: string;
+    };
 };
 
 export type AddHospitalArgs = {
