@@ -154,5 +154,9 @@ Deploying is safe; these are things to be honest with yourself about.
   thing you can do after deploying.
 - **Rate-limit counters are in-process.** Fine on one instance. Run two and the
   effective limit doubles — move them to Redis before scaling horizontally.
-- **The hospital directory is empty**, so "Find care" shows its empty state until
-  you seed it.
+- **The hospital directory is empty until you fill `data/hospitals.json`.** Copy
+  `data/hospitals.example.json`, replace it with verified facilities, and commit it. The server
+  seeds an empty database automatically on boot — no command to remember, and nothing for a user
+  to ever run. Once the collection has data the boot seeder stays out of the way, so it can never
+  overwrite a correction made in production with a stale value from the file. To change existing
+  entries, run `npm run seed:hospitals` explicitly.

@@ -12,6 +12,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "dev": "nodemon --exec tsx src/server.ts",
+    "seed:hospitals": "tsx scripts/seed-hospitals.ts",
     "lint": "eslint src --ext .ts,.js",
     "lint:fix": "eslint src --ext .ts,.js --fix",
     "format": "prettier --write \"src/**/*.{ts,js,json,md,graphql}\""

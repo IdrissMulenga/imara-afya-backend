@@ -101,6 +101,15 @@ Quick, high-value items that directly support scale.
       `medicationLog`, `periodCycle`, `habitLog`, `pregnancy`, `guidance`)
 - [x] Hard row caps on every list query (`src/utils/limits.ts`) — no unbounded reads
 - [x] Per-IP rate limiting on `/graphql` (`src/middleware/rateLimit.ts`)
+- [x] Per-operation rate limiting (`src/middleware/operationLimit.ts`) — the per-IP limiter counts
+      HTTP requests, which for GraphQL means `login` and `careMap` and `logHabit` all spend one
+      shared budget. This counts the *fields executed*, keyed by user id where we have one and IP
+      otherwise, so credential and email-sending operations can be held to a few per hour without
+      throttling ordinary reads. Anything not named explicitly falls through to a default
+      read/write budget, so new fields are covered from the day they ship.
+- [x] Map geometry moved server-side (`src/utils/geo.ts`, `src/config/mapConfig.ts`) — distance,
+      radius, sorting and the map's opening region are computed once in the backend instead of
+      being reimplemented on each client
 - [x] CORS locked to `FRONTEND_URL` (was: the `cors` package was installed but never wired up)
 - [x] `/health` endpoint reporting app + database state
 - [x] Graceful shutdown on SIGTERM/SIGINT, draining connections and closing the DB pool

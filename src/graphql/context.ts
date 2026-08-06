@@ -5,6 +5,9 @@ import { verifyToken} from "../services/authServices.js"
 export type Context = {
     request: Request;
     user?: InstanceType<typeof User>;
+    //only set alongside `user`. `origin` is when the password was last actually
+    //typed, which is what caps how long refreshSession may keep sliding.
+    session?: { origin: number };
 };
 
 
@@ -30,6 +33,7 @@ export const context = async (initialContext: YogaInitialContext): Promise<Conte
     const token = getBearerToken(authHeader);
 
     let user;
+    let session;
 
     if (token) {
         try {
@@ -49,6 +53,16 @@ export const context = async (initialContext: YogaInitialContext): Promise<Conte
 
                 if (findUser && tokenVersion === currentVersion) {
                     user = findUser;
+
+                    //`o` is the session origin. Tokens issued before sliding
+                    //sessions existed don't carry one, so fall back to when the
+                    //token itself was issued — for those, the session simply
+                    //starts counting from their last login.
+                    const origin = typeof decoded.o === 'number'
+                        ? decoded.o
+                        : (decoded.iat ?? Math.floor(Date.now() / 1000));
+
+                    session = { origin };
                 }
             }
         } catch (err: any) {
@@ -56,5 +70,5 @@ export const context = async (initialContext: YogaInitialContext): Promise<Conte
         }
     }
   // return context request and user
-    return { request, user };
+    return { request, user, session };
 };

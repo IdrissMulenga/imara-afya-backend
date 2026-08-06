@@ -13,6 +13,7 @@ export const userType = /* GraphQL */ `
         plan: String!
         role: String!
         waterGoal: Float
+        cycleRegularity: String
         ramadanMode: Boolean
         suhoorTime: String
         iftarTime: String
@@ -59,6 +60,14 @@ export const changePasswordInput = /* GraphQL */ `
     input ChangePasswordInput {
         currentPassword: String!
         newPassword: String!
+    }
+`;
+
+export const deleteAccountInput = /* GraphQL */ `
+    input DeleteAccountInput {
+        # re-entered on purpose: this is irreversible, and an unlocked phone
+        # should not be enough to erase someone's health history
+        password: String!
     }
 `;
 
