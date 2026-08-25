@@ -9,6 +9,7 @@ import { envConf } from './config/envConf.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { securityHeaders, securityPlugin } from './middleware/security.js';
 import { operationLimitPlugin } from './middleware/operationLimit.js';
+import { mailStatus } from './services/mailService.js';
 
 const app = express()
 
@@ -36,6 +37,10 @@ app.get('/health', (_req, res) => {
     res.status(dbUp ? 200 : 503).json({
         status: dbUp ? 'ok' : 'degraded',
         database: dbUp ? 'connected' : 'disconnected',
+        //'test-sender-only' means password resets reach nobody but the Resend
+        //account owner — visible here rather than discovered from a support
+        //message three weeks after launch
+        mail: mailStatus(),
         uptime: Math.floor(process.uptime()),
     });
 })

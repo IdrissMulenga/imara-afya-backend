@@ -4,6 +4,13 @@ import { verifyToken} from "../services/authServices.js"
 
 export type Context = {
     request: Request;
+    //WHO IS CALLING, when there is no logged-in user to name.
+    //
+    //Resolved by express, which knows about `trust proxy` and so takes the hop
+    //OUR proxy wrote rather than the one the caller put at the front of
+    //x-forwarded-for. The per-operation limiter keys on this, and reading the
+    //raw header instead is what previously let anyone reset their own budget.
+    ip: string;
     user?: InstanceType<typeof User>;
     //only set alongside `user`. `origin` is when the password was last actually
     //typed, which is what caps how long refreshSession may keep sliding.
@@ -25,6 +32,10 @@ const getBearerToken = (authHeader: string) => {
 export const context = async (initialContext: YogaInitialContext): Promise<Context> => {
     //get the HTTP request object from YogaInitialContext.
     const request = initialContext.request;
+
+    //Yoga hands the express request through as `req` when it's mounted on an
+    //express route, which is where the trust-proxy-resolved address lives.
+    const ip = (initialContext as { req?: { ip?: string } }).req?.ip || 'unknown';
 
     //get authorization header
     const authHeader = request.headers.get('authorization') || '';
@@ -70,5 +81,5 @@ export const context = async (initialContext: YogaInitialContext): Promise<Conte
         }
     }
   // return context request and user
-    return { request, user, session };
+    return { request, ip, user, session };
 };

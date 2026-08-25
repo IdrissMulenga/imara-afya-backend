@@ -4,26 +4,13 @@ import { authCheck, womenOnlyCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { StartPregnancyArgs, UpdatePregnancyArgs, EndPregnancyArgs, RemovePregnancyArgs } from "../../utils/types.js"
 import { LIMITS } from "../../utils/limits.js"
+import { addDays, daysBetween } from "../../utils/datetime.js"
+import { assertPastDate, rethrow, userToday } from "../../utils/resolverHelpers.js"
 
 
-//same plain "YYYY-MM-DD" helpers the period tracker uses
-const toDate = (s: string) => new Date(s);
-
-const addDays = (date: Date, days: number) => {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
-};
-const todayIso = () => new Date().toISOString().slice(0, 10);
-//whole days from one date string to another (positive = in the future)
-const daysBetween = (fromIso: string, toIso: string) =>
-    Math.round((toDate(toIso).getTime() - toDate(fromIso).getTime()) / (1000 * 60 * 60 * 24));
-
-//a date string is only usable if it parses and isn't in the future
-const isValidPastDate = (s: string) => {
-    const d = toDate(s);
-    return !Number.isNaN(d.getTime()) && s <= todayIso();
-};
+//Date maths and the "not in the future" check are shared — this file used to
+//carry its own copies, built on a UTC "today". A due date is counted in days
+//from the last period, so being a day out matters.
 
 //Naegele's rule — 280 days from the first day of the last period
 const GESTATION_DAYS = 280;
@@ -70,9 +57,10 @@ export default {
       }
 
       const lastPeriodDate = pregnancy.get('lastPeriodDate');
-      const today = todayIso();
+      //her calendar, not the server's
+      const today = userToday(context);
 
-      const dueDate = addDays(toDate(lastPeriodDate), GESTATION_DAYS);
+      const dueDate = addDays(lastPeriodDate, GESTATION_DAYS);
 
       //gestational age is counted from the last period, not from conception
       const daysElapsed = daysBetween(lastPeriodDate, today);
@@ -104,14 +92,10 @@ export default {
       const { lastPeriodDate, note } = input
 
       try {
-        if (!isValidPastDate(lastPeriodDate)) {
-          throw new GraphQLError('Last period date must be a valid date that is not in the future', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
+        assertPastDate(lastPeriodDate, userToday(context), 'Last period date');
 
         //a pregnancy runs about 40 weeks — anything far past that is a typo
-        if (daysBetween(lastPeriodDate, todayIso()) > 320) {
+        if (daysBetween(lastPeriodDate, userToday(context)) > 320) {
           throw new GraphQLError('That date is too far in the past to start a pregnancy', {
             extensions: { code: 'BAD_USER_INPUT' },
           });
@@ -131,14 +115,10 @@ export default {
         await pregnancy.save();
 
         return pregnancy;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while starting pregnancy', {
-          extensions: { code: 'PREGNANCY_CREATE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(
+          error, 'Unexpected error while starting pregnancy', 'PREGNANCY_CREATE_FAILED',
+        );
       }
     },
 
@@ -158,10 +138,8 @@ export default {
           });
         }
 
-        if (lastPeriodDate !== undefined && !isValidPastDate(lastPeriodDate)) {
-          throw new GraphQLError('Last period date must be a valid date that is not in the future', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
+        if (lastPeriodDate !== undefined) {
+          assertPastDate(lastPeriodDate, userToday(context), 'Last period date');
         }
 
         //only update the fields the user actually sent
@@ -171,14 +149,10 @@ export default {
         await pregnancy.save();
 
         return pregnancy;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while updating pregnancy', {
-          extensions: { code: 'PREGNANCY_UPDATE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(
+          error, 'Unexpected error while updating pregnancy', 'PREGNANCY_UPDATE_FAILED',
+        );
       }
     },
 
@@ -204,13 +178,9 @@ export default {
           });
         }
 
-        const ended = endedAt ?? todayIso();
+        const ended = endedAt ?? userToday(context);
 
-        if (!isValidPastDate(ended)) {
-          throw new GraphQLError('End date must be a valid date that is not in the future', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
+        assertPastDate(ended, userToday(context), 'End date');
 
         //it can't have ended before it started
         if (ended < pregnancy.get('lastPeriodDate')) {
@@ -228,21 +198,12 @@ export default {
         await pregnancy.save();
 
         return pregnancy;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
+      } catch (error) {
         //an out of enum outcome lands here
-        if (error?.name === 'ValidationError') {
-          throw new GraphQLError('Invalid pregnancy data', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
-
-        throw new GraphQLError('Unexpected error while ending pregnancy', {
-          extensions: { code: 'PREGNANCY_UPDATE_FAILED' },
-        });
+        throw rethrow(
+          error, 'Unexpected error while ending pregnancy', 'PREGNANCY_UPDATE_FAILED',
+          'Invalid pregnancy data',
+        );
       }
     },
 
@@ -261,14 +222,10 @@ export default {
         }
 
         return true;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while removing pregnancy', {
-          extensions: { code: 'PREGNANCY_DELETE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(
+          error, 'Unexpected error while removing pregnancy', 'PREGNANCY_DELETE_FAILED',
+        );
       }
     },
   },

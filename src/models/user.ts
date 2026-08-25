@@ -45,18 +45,28 @@ const userSchema = new Schema({
         required: true,
         enum: ["Man", "Woman"]
     },
-    religion: {
-        //stored as a canonical key — the app shows the translated label
+    //IANA name, e.g. "Africa/Bujumbura". Everything that groups by day resolves
+    //"today" through this, so a dose logged at 00:30 lands on the right date.
+    //UTC is the safe default: wrong for most people, but never crashes.
+    timezone: {
         type: String,
-        enum: ["christianity", "islam", "hinduism", "buddhism", "traditional", "none", "prefer_not_to_say"],
-        default: "islam"
+        default: "UTC",
+        trim: true
+    },
+    //metric stores kg and millilitres, imperial shows lb and fluid ounces.
+    //Only the DISPLAY changes — storage is always metric, so switching never
+    //rewrites history or loses precision.
+    unitSystem: {
+        type: String,
+        enum: ["metric", "imperial"],
+        default: "metric"
     },
     plan: {
         type: String,
         enum: ["free", "premium"],
         default: "free"
     },
-    //only an admin can write to the shared guidance library and hospital directory —
+    //only an admin can write to the shared guidance library —
     //this is never settable from signup or completeProfile, it's promoted in the database
     role: {
         type: String,
@@ -94,18 +104,6 @@ const userSchema = new Schema({
     passwordResetExpires: {
         type: Date,
         select: false
-    },
-    //when on, medication reminders get shifted around the fasting window
-    ramadanMode: {
-        type: Boolean,
-        default: false
-    },
-    //"HH:mm" 24h strings, e.g. "04:30"
-    suhoorTime: {
-        type: String
-    },
-    iftarTime: {
-        type: String
     }
 }, { timestamps: true })
 

@@ -48,7 +48,6 @@ export type CompleteProfileArgs = {
         image?: string;
         height?: number;
         weight?: number;
-        religion?: string;
     };
 };
 
@@ -95,6 +94,12 @@ export type AddMedicationArgs = {
         dosage?: string;
         times?: string[];
         frequency?: string;
+        days?: number[];
+        startDate?: string;
+        endDate?: string;
+        stock?: number;
+        stockPerDose?: number;
+        refillAtDays?: number;
     };
 };
 
@@ -105,6 +110,12 @@ export type UpdateMedicationArgs = {
         dosage?: string;
         times?: string[];
         frequency?: string;
+        days?: number[];
+        startDate?: string;
+        endDate?: string;
+        stock?: number;
+        stockPerDose?: number;
+        refillAtDays?: number;
         active?: boolean;
     };
 };
@@ -115,13 +126,25 @@ export type RemoveMedicationArgs = {
 
 export type MarkMedicationTakenArgs = {
     medicationId: string;
+    slot?: string;
     takenAt?: string;
     status?: string;
+};
+
+export type UnmarkMedicationTakenArgs = {
+    medicationId: string;
+    slot?: string;
+    date?: string;
 };
 
 export type MyMedicationLogsArgs = {
     medicationId?: string;
     date?: string;
+};
+
+export type MedicationAdherenceArgs = {
+    days?: number;
+    medicationId?: string;
 };
 
 export type LogPeriodArgs = {
@@ -175,45 +198,6 @@ export type RemovePregnancyArgs = {
     id: string;
 };
 
-export type NearbyHospitalsArgs = {
-    latitude: number;
-    longitude: number;
-    radiusKm?: number;
-};
-
-export type HospitalsArgs = {
-    city?: string;
-    province?: string;
-    type?: string;
-};
-
-//every field is optional: the screen opens with no filters and no location,
-//and each one narrows the result as she supplies it
-export type CareMapArgs = {
-    input?: {
-        latitude?: number;
-        longitude?: number;
-        radiusKm?: number;
-        type?: string;
-        search?: string;
-        city?: string;
-        province?: string;
-    };
-};
-
-export type AddHospitalArgs = {
-    input: {
-        name: string;
-        address?: string;
-        phone?: string;
-        latitude: number;
-        longitude: number;
-        city?: string;
-        province?: string;
-        type?: string;
-    };
-};
-
 export type LogHabitArgs = {
     input: {
         type: string;
@@ -236,14 +220,6 @@ export type SetWaterGoalArgs = {
     glasses: number;
 };
 
-export type SetRamadanModeArgs = {
-    input: {
-        enabled: boolean;
-        suhoorTime?: string;
-        iftarTime?: string;
-    };
-};
-
 export type GuidanceArgs = {
     category?: string;
     language?: string;
@@ -260,3 +236,53 @@ export type AddGuidanceArgs = {
         published?: boolean;
     };
 };
+
+export type SetPreferencesArgs = {
+    input: {
+        timezone?: string;
+        unitSystem?: string;
+    };
+};
+
+/* ------------------- check-ins and routines --------------------- */
+
+export type CheckInSummaryArgs = { days?: number };
+export type MyCheckInsArgs = { from?: string; to?: string };
+
+export type SaveCheckInArgs = {
+    input: {
+        mood: number;
+        energy: number;
+        note?: string;
+        date?: string;
+    };
+};
+
+export type RemoveCheckInArgs = { date: string };
+
+export type TodayRoutinesArgs = { date?: string };
+export type MyRoutinesArgs = { includeArchived?: boolean };
+
+export type AddRoutineArgs = {
+    input: {
+        title: string;
+        icon?: string;
+        days?: number[];
+        time?: string;
+    };
+};
+
+export type UpdateRoutineArgs = {
+    id: string;
+    input: {
+        title?: string;
+        icon?: string;
+        days?: number[];
+        time?: string;
+        active?: boolean;
+        position?: number;
+    };
+};
+
+export type RemoveRoutineArgs = { id: string };
+export type SetRoutineDoneArgs = { id: string; done: boolean; date?: string };

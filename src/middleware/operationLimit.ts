@@ -8,7 +8,7 @@ import { hit } from './rateLimit.js';
 //
 //The IP limiter in rateLimit.ts counts HTTP requests, which for GraphQL is
 //almost meaningless: every operation we expose arrives at the same URL, so
-//`careMap` and `login` and `logHabit` all spend from one budget. One POST can
+//`login` and `logHabit` and `saveCheckIn` all spend from one budget. One POST can
 //also carry several fields at once.
 //
 //This plugin counts the FIELDS actually executed, so the expensive and the
@@ -57,21 +57,9 @@ const RULES: Record<string, Rule> = {
     //A caller asking far more often than that is looping, not using the app.
     refreshSession: [{ windowMs: hours(1), max: 20 }],
 
-    //----------------------------- the map -----------------------------
-    //careMap re-runs on every filter tap and every search keystroke, so the
-    //burst window is deliberately roomy — it is there to catch a retry loop,
-    //not ordinary typing.
-    careMap: [
-        { windowMs: seconds(10), max: 15 },
-        { windowMs: minutes(1), max: 60 },
-    ],
-    nearbyHospitals: [{ windowMs: minutes(1), max: 40 }],
-    hospitals: [{ windowMs: minutes(1), max: 40 }],
 
     //-------------------------- shared writes --------------------------
-    //writes to directories everybody reads; wrong data here sends someone to
-    //the wrong hospital, so a slow hand is the right default
-    addHospital: [{ windowMs: minutes(1), max: 20 }],
+    //writes to the shared guidance library that everybody reads
     addGuidance: [{ windowMs: minutes(1), max: 20 }],
 
     //------------------------- image payloads --------------------------
@@ -94,17 +82,12 @@ const DEFAULT_WRITE: Rule = [{ windowMs: minutes(1), max: 90 }];
 //Prefer the user id: it survives a changed IP, and it stops one person on a
 //shared connection from spending everyone else's budget. Fall back to the IP
 //for anything unauthenticated, which is exactly where login and signup live.
-const callerKey = (context: Context) => {
-    const userId = context.user?.id;
-
-    if (userId) return `u:${userId}`;
-
-    const forwarded = context.request?.headers?.get('x-forwarded-for');
-
-    if (forwarded) return `ip:${forwarded.split(',')[0].trim()}`;
-
-    return 'ip:unknown';
-};
+//
+//The IP comes from the context rather than from the x-forwarded-for header,
+//which the caller writes and could therefore change on every request to get a
+//fresh budget — see the note on Context.ip.
+const callerKey = (context: Context) =>
+    context.user?.id ? `u:${context.user.id}` : `ip:${context.ip ?? 'unknown'}`;
 
 
 //THE TOP-LEVEL FIELDS THIS OPERATION ACTUALLY RUNS.
@@ -131,7 +114,9 @@ export const operationLimitPlugin: Plugin = {
 
         if (!operation) return;
 
-        const context = args.contextValue as Context;
+        //Yoga types this as its own initial context; ours is what the `context`
+        //function in graphql/context.ts actually returned
+        const context = args.contextValue as unknown as Context;
         const caller = callerKey(context);
 
         const isMutation = operation.operation === 'mutation';
