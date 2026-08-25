@@ -17,7 +17,12 @@ export const LIMITS = {
     cycles: 200,
     pregnancies: 50,
     habitLogs: 200,
-    //shared directories, read by everyone
-    hospitals: 300,
+    //one row per day; a year of daily check-ins is 365
+    checkIns: 400,
+    //user-defined routines. Beyond this it's a to-do app, not a health app.
+    routines: 30,
+    //30 routines x ~1 year of ticks, capped well below that in practice
+    routineLogs: 500,
+    //shared directory, read by everyone
     guidance: 200,
 } as const;

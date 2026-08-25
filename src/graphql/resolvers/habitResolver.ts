@@ -4,28 +4,32 @@ import { authCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { LogHabitArgs, MyHabitLogsArgs, RemoveHabitLogArgs, SetWaterGoalArgs } from "../../utils/types.js"
 import { LIMITS } from "../../utils/limits.js"
+import { addDays } from "../../utils/datetime.js"
+import { assertPastDate, rethrow, userToday } from "../../utils/resolverHelpers.js"
 
-
-//plain "YYYY-MM-DD" helpers
-const todayIso = () => new Date().toISOString().slice(0, 10);
-const shiftDay = (iso: string, days: number) => {
-    const d = new Date(iso);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
-};
 
 //how many days in a row (ending today, or yesterday if today isn't done yet)
-//the user hit their water goal
-const waterStreak = (byDay: Map<string, number>, goal: number) => {
+//the user hit their water goal.
+//
+//`today` is handed in rather than read here — this file used to work out its
+//own "today" from UTC, which broke the streak for anyone whose evening falls on
+//the previous UTC day. Whose calendar we mean is now the caller's decision.
+const waterStreak = (byDay: Map<string, number>, goal: number, today: string) => {
     let streak = 0;
-    let day = todayIso();
+    let day = today;
 
     //today not done yet shouldn't break a streak — start from yesterday
-    if ((byDay.get(day) ?? 0) < goal) day = shiftDay(day, -1);
+    if ((byDay.get(day) ?? 0) < goal) day = addDays(day, -1);
 
-    while ((byDay.get(day) ?? 0) >= goal) {
+    //Bounded by the number of days actually logged. The caller only ever
+    //queries a 60-day window so this could not really run away, but an
+    //unbounded loop whose exit depends on database contents is worth not
+    //having at all.
+    for (let i = 0; i < byDay.size; i += 1) {
+        if ((byDay.get(day) ?? 0) < goal) break;
+
         streak++;
-        day = shiftDay(day, -1);
+        day = addDays(day, -1);
     }
 
     return streak;
@@ -48,11 +52,11 @@ export default {
       authCheck(context);
 
       const user = context.user!;
-      const today = todayIso();
+      const today = userToday(context);
       const goal = user.get('waterGoal') ?? 8;
 
       //only the last 60 days matter for a streak, keeps the query small
-      const since = shiftDay(today, -60);
+      const since = addDays(today, -60);
 
       const logs = await HabitLog.find({
         user: user.id,
@@ -96,7 +100,7 @@ export default {
         waterToday,
         waterGoal: goal,
         waterGoalMet: waterToday >= goal,
-        waterStreak: waterStreak(waterByDay, goal),
+        waterStreak: waterStreak(waterByDay, goal, today),
         sleepLastNight,
         latestWeight: weight,
         bmi,
@@ -146,31 +150,26 @@ export default {
           });
         }
 
+        //an unchecked date went straight into the document before, so a typo
+        //filed a log under a day that never existed and quietly skewed the
+        //summary
+        const day = date ? assertPastDate(date, userToday(context)) : userToday(context);
+
         const log = new HabitLog({
           user: context.user!.id,
           type,
           value,
-          date: date ?? todayIso(),
+          date: day,
         });
 
         await log.save();
 
         return log;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
+      } catch (error) {
         //bad type value (not in the enum) lands here
-        if (error?.name === 'ValidationError') {
-          throw new GraphQLError('Invalid habit data', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
-
-        throw new GraphQLError('Unexpected error while logging habit', {
-          extensions: { code: 'HABIT_LOG_FAILED' },
-        });
+        throw rethrow(
+          error, 'Unexpected error while logging habit', 'HABIT_LOG_FAILED', 'Invalid habit data',
+        );
       }
     },
 
@@ -188,14 +187,8 @@ export default {
         }
 
         return true;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while removing entry', {
-          extensions: { code: 'HABIT_DELETE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while removing entry', 'HABIT_DELETE_FAILED');
       }
     },
 
@@ -217,14 +210,8 @@ export default {
         await user.save();
 
         return user;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while saving goal', {
-          extensions: { code: 'GOAL_UPDATE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while saving goal', 'GOAL_UPDATE_FAILED');
       }
     },
   },

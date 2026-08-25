@@ -3,6 +3,7 @@ export const userMutation = /* GraphQL */ `
     login (input: LoginInput!) : AuthPayload!
     completeProfile (input: CompleteProfileInput!) : User!
     upgradeToPremium : User!
+    setPreferences (input: SetPreferencesInput!) : User!
     refreshSession : AuthPayload!
     logout : Boolean!
     changePassword (input: ChangePasswordInput!) : AuthPayload!

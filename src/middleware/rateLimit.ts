@@ -33,36 +33,64 @@ const sweepTimer = setInterval(() => sweep(Date.now()), SWEEP_MS);
 sweepTimer.unref?.();
 
 
-//count one request against a key, returning what's left in this window
-export const hit = (key: string, windowMs: number, max: number) => {
+//COUNT ONE REQUEST AGAINST A KEY, returning what's left in this window.
+//
+//`peek` asks the same question without spending anything. That matters where
+//only some outcomes should count: a login checks whether the account is already
+//locked BEFORE it knows if the password is right, and charging for that check
+//would mean successful logins counted towards a "too many failed attempts"
+//limit — which is how someone locks themselves out of their own account.
+export const hit = (
+    key: string,
+    windowMs: number,
+    max: number,
+    { peek = false } = {},
+) => {
     const now = Date.now();
     const existing = buckets.get(key);
 
     if (!existing || existing.resetAt <= now) {
+        if (peek) return { allowed: true, remaining: max, resetAt: now + windowMs };
+
         buckets.set(key, { count: 1, resetAt: now + windowMs });
+
         return { allowed: true, remaining: max - 1, resetAt: now + windowMs };
     }
 
-    existing.count += 1;
+    const count = peek ? existing.count : (existing.count += 1);
 
     return {
-        allowed: existing.count <= max,
-        remaining: Math.max(max - existing.count, 0),
+        allowed: count <= max,
+        remaining: Math.max(max - count, 0),
         resetAt: existing.resetAt,
     };
 };
 
 
-const clientIp = (req: Request) => {
-    //behind a proxy (Render, Railway, nginx) the real IP is in x-forwarded-for
-    const forwarded = req.headers['x-forwarded-for'];
-
-    if (typeof forwarded === 'string' && forwarded.length) {
-        return forwarded.split(',')[0].trim();
-    }
-
-    return req.ip || req.socket.remoteAddress || 'unknown';
+//Forget a key's counter.
+//
+//For counters that exist to detect "this person has forgotten something" rather
+//than to block an attacker: once they get it right, the slate is clean. Never
+//call this from a path an unauthenticated caller can reach, or the limit it
+//protects becomes trivially resettable.
+export const clearHits = (key: string) => {
+    buckets.delete(key);
 };
+
+
+//WHICH IP TO COUNT AGAINST.
+//
+//`req.ip`, and deliberately NOT the x-forwarded-for header.
+//
+//This used to read that header directly and take the leftmost value, which is
+//the address the CLIENT put there. Anyone could send a different one on every
+//request and get a fresh bucket each time — which quietly turned the login and
+//signup limits into no limits at all, exactly where they matter most.
+//
+//Express already does this correctly: `app.set('trust proxy', 1)` in app.ts
+//tells it there is one proxy in front, so it takes the LAST hop the header
+//claims rather than the first, and that is the one our own proxy wrote.
+const clientIp = (req: Request) => req.ip || req.socket.remoteAddress || 'unknown';
 
 
 export const rateLimit = (

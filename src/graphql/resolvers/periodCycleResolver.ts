@@ -4,38 +4,14 @@ import { authCheck, womenOnlyCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { LogPeriodArgs, UpdatePeriodArgs, RemovePeriodArgs, SetCycleRegularityArgs } from "../../utils/types.js"
 import { LIMITS } from "../../utils/limits.js"
+import { addDays, daysBetween } from "../../utils/datetime.js"
+import { assertPastDate, rethrow, userToday } from "../../utils/resolverHelpers.js"
 
-
-//small helpers to work with plain "YYYY-MM-DD" date strings
-const toDate = (s: string) => new Date(s);
-const addDays = (date: Date, days: number) => {
-    const d = new Date(date);
-    d.setDate(d.getDate() + days);
-    return d.toISOString().slice(0, 10);
-};
-const todayIso = () => new Date().toISOString().slice(0, 10);
-//whole days from one date string to another (positive = in the future)
-const daysBetween = (fromIso: string, toIso: string) =>
-    Math.round((toDate(toIso).getTime() - toDate(fromIso).getTime()) / (1000 * 60 * 60 * 24));
-
-//a usable date is "YYYY-MM-DD", parseable, and not in the future. A future or
-//malformed start date would skew averageCycleLength and give her a wrong
-//prediction, which is the one thing this screen must not do.
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-const assertUsableDate = (value: string, label: string) => {
-    if (!DATE_RE.test(value) || Number.isNaN(toDate(value).getTime())) {
-        throw new GraphQLError(`${label} must be a real date`, {
-            extensions: { code: 'BAD_USER_INPUT' },
-        });
-    }
-
-    if (value > todayIso()) {
-        throw new GraphQLError(`${label} cannot be in the future`, {
-            extensions: { code: 'BAD_USER_INPUT' },
-        });
-    }
-};
+//A future or malformed start date would skew averageCycleLength and give her a
+//wrong prediction, which is the one thing this screen must not do. The check
+//lives in resolverHelpers now — this file used to carry its own copy, built on
+//a UTC "today", so a date she logged late at night could be rejected as being
+//in the future when on her calendar it plainly wasn't.
 
 //a period lasting more than three weeks is far more likely a typo than real,
 //and either way it's worth her checking rather than us silently storing it
@@ -81,8 +57,17 @@ export default {
       authCheck(context);
       womenOnlyCheck(context);
 
-      //grab the cycles oldest first so we can measure the gaps between them
-      const cycles = await PeriodCycle.find({ user: context.user!.id }).sort({ startDate: 1 }).limit(LIMITS.cycles);
+      //THE MOST RECENT CYCLES, oldest first.
+      //
+      //Sorted newest-first for the query and reversed here, not sorted
+      //oldest-first: with the ascending sort the limit kept the OLDEST rows, so
+      //once someone passed the cap every prediction below was anchored to a
+      //cycle from years ago and the countdown was nonsense.
+      const cycles = (
+        await PeriodCycle.find({ user: context.user!.id })
+          .sort({ startDate: -1 })
+          .limit(LIMITS.cycles)
+      ).reverse();
 
       const regularity = context.user!.get('cycleRegularity') ?? 'unknown';
 
@@ -93,9 +78,10 @@ export default {
       const gaps: number[] = [];
 
       for (let i = 1; i < cycles.length; i++) {
-        const prev = toDate(cycles[i - 1].get('startDate'));
-        const curr = toDate(cycles[i].get('startDate'));
-        const gap = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+        const gap = daysBetween(
+          cycles[i - 1].get('startDate'),
+          cycles[i].get('startDate'),
+        );
 
         //ignore impossible gaps rather than letting one bad row move the average
         if (gap > 10 && gap < 90) gaps.push(gap);
@@ -147,16 +133,17 @@ export default {
       }
 
       //predict from the most recent start date
-      const lastStart = toDate(cycles[cycles.length - 1].get('startDate'));
+      const lastStart = cycles[cycles.length - 1].get('startDate');
       const nextPeriodDate = addDays(lastStart, averageCycleLength);
 
       //ovulation is roughly 14 days before the next period; fertile window sits around it
-      const next = toDate(nextPeriodDate);
-      const fertileWindowStart = addDays(next, -19);
-      const fertileWindowEnd = addDays(next, -13);
+      const fertileWindowStart = addDays(nextPeriodDate, -19);
+      const fertileWindowEnd = addDays(nextPeriodDate, -13);
 
-      //countdowns from today — this powers the "days left until your period" reminder
-      const today = todayIso();
+      //Countdowns from HER today, not the server's. On a UTC "today" the
+      //countdown was a day out for everyone east of Greenwich for part of
+      //every day — including all of Burundi between midnight and 02:00.
+      const today = userToday(context);
 
       return {
         basedOnCycles: cycles.length,
@@ -184,10 +171,10 @@ export default {
       const { startDate, endDate } = input
 
       try {
-        assertUsableDate(startDate, 'Start date');
+        assertPastDate(startDate, userToday(context), 'Start date');
 
         if (endDate) {
-          assertUsableDate(endDate, 'End date');
+          assertPastDate(endDate, userToday(context), 'End date');
 
           if (endDate < startDate) {
             throw new GraphQLError('End date cannot be before the start date', {
@@ -229,14 +216,8 @@ export default {
         await cycle.save();
 
         return cycle;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while logging period', {
-          extensions: { code: 'PERIOD_CREATE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while logging period', 'PERIOD_CREATE_FAILED');
       }
     },
 
@@ -262,8 +243,8 @@ export default {
         const nextStart = startDate ?? cycle.get('startDate');
         const nextEnd = endDate ?? cycle.get('endDate');
 
-        if (startDate !== undefined) assertUsableDate(startDate, 'Start date');
-        if (endDate !== undefined && endDate !== null) assertUsableDate(endDate, 'End date');
+        if (startDate !== undefined) assertPastDate(startDate, userToday(context), 'Start date');
+        if (endDate !== undefined && endDate !== null) assertPastDate(endDate, userToday(context), 'End date');
 
         if (nextEnd) {
           if (nextEnd < nextStart) {
@@ -286,14 +267,8 @@ export default {
         await cycle.save();
 
         return cycle;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while updating period', {
-          extensions: { code: 'PERIOD_UPDATE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while updating period', 'PERIOD_UPDATE_FAILED');
       }
     },
 
@@ -312,14 +287,8 @@ export default {
         }
 
         return true;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while removing period', {
-          extensions: { code: 'PERIOD_DELETE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while removing period', 'PERIOD_DELETE_FAILED');
       }
     },
 
@@ -345,14 +314,10 @@ export default {
         await user.save();
 
         return user;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while saving your answer', {
-          extensions: { code: 'REGULARITY_UPDATE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(
+          error, 'Unexpected error while saving your answer', 'REGULARITY_UPDATE_FAILED',
+        );
       }
     },
   },

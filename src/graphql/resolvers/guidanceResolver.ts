@@ -4,7 +4,7 @@ import { authCheck, adminCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { GuidanceArgs, AddGuidanceArgs } from "../../utils/types.js"
 import { LIMITS } from "../../utils/limits.js"
-
+import { rethrow } from "../../utils/resolverHelpers.js"
 
 
 export default {
@@ -19,8 +19,10 @@ export default {
       if (category) filter.category = category;
       if (language) filter.language = language;
 
-      //religious content first so it reads like the app groups it
-      return Guidance.find(filter).sort({ kind: 1, createdAt: -1 }).limit(LIMITS.guidance);
+      //newest first. This used to sort by `kind` as well, from when the library
+      //held religious content that had to come first — with one kind left, that
+      //part of the sort only cost the database work.
+      return Guidance.find(filter).sort({ createdAt: -1 }).limit(LIMITS.guidance);
     },
   },
 
@@ -33,34 +35,29 @@ export default {
       const { category, kind, title, body, source, language, published } = input
 
       try {
-        //religious guidance must be attributable — a scholar or reference is required
-        //so users can tell it apart from medical advice
-        if (kind === 'religious' && !source?.trim()) {
-          throw new GraphQLError('Religious guidance requires a source (scholar or reference)', {
+        //Medical guidance must be attributable. Everyone reads this library and
+        //takes it as advice, so a claim with no reference behind it does not go
+        //in — the old check only demanded this of religious content, which no
+        //longer exists, leaving the medical content unchecked.
+        if (!source?.trim()) {
+          throw new GraphQLError('Guidance requires a source (a medical reference)', {
             extensions: { code: 'BAD_USER_INPUT' },
           });
         }
 
-        const entry = new Guidance({ category, kind, title, body, source, language, published });
+        const entry = new Guidance({
+          category, kind, title, body, source: source.trim(), language, published,
+        });
 
         await entry.save();
 
         return entry;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
+      } catch (error) {
         //an out of enum category / kind / language lands here
-        if (error?.name === 'ValidationError') {
-          throw new GraphQLError('Invalid guidance data', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
-
-        throw new GraphQLError('Unexpected error while adding guidance', {
-          extensions: { code: 'GUIDANCE_CREATE_FAILED' },
-        });
+        throw rethrow(
+          error, 'Unexpected error while adding guidance', 'GUIDANCE_CREATE_FAILED',
+          'Invalid guidance data',
+        );
       }
     },
   },

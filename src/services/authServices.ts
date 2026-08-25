@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken"
 import { envConf } from './../config/envConf.js';
 import { GraphQLError } from "graphql"
+import User from "../models/user.js"
 import type { Context } from "../graphql/context.js"
 
 //pin the algorithm on both sides. Verifying without this lets an attacker pick
@@ -49,6 +50,39 @@ export const generateToken = (userId: string, tokenVersion = 0, origin?: number)
 export const sessionExpired = (origin: number) =>
     nowInSeconds() - origin > MAX_SESSION_DAYS * 24 * 60 * 60;
 
+
+//RETIRE EVERY TOKEN THIS ACCOUNT HAS ISSUED.
+//
+//Atomic, and deliberately not `user.set('tokenVersion', current + 1)` followed
+//by a save. That reads the number into node, adds one there, and writes the
+//result back — so two requests that both read 3 both write 4, and one of the
+//two increments is simply lost. `$inc` does the addition inside the database,
+//where the two cannot interleave.
+//
+//Losing an increment happens to be survivable today: everything that bumps this
+//number wants the same outcome ("tokens older than now are dead"), and 4 still
+//delivers that. But this counter is the whole revocation mechanism — it is what
+//makes "log out" mean something on a stolen phone — and it should not depend on
+//a subtle argument about which callers happen to agree with each other.
+//
+//Returns the authoritative new version, since the caller usually needs to mint
+//a replacement token carrying it.
+export const revokeTokens = async (userId: string) => {
+    const updated = await User.findByIdAndUpdate(
+        userId,
+        { $inc: { tokenVersion: 1 } },
+        { new: true, select: 'tokenVersion' },
+    );
+
+    if (!updated) {
+        throw new GraphQLError('User not found', {
+            extensions: { code: 'USER_NOT_FOUND' },
+        });
+    }
+
+    return updated.get('tokenVersion') as number;
+};
+
 export const verifyToken = (token: string) => {
     try {
         return jwt.verify(token, envConf.JWT_SECRET, {
@@ -84,7 +118,7 @@ export const premiumCheck = (context: Context) => {
 
 
 export const adminCheck = (context: Context) => {
-    //content that every user reads (guidance, hospital directory) is admin-only to write
+    //content that every user reads (the guidance library) is admin-only to write
     if (!context.user || context.user.get('role') !== 'admin') {
         throw new GraphQLError('This action requires an admin account', {
             extensions: { code: 'ADMIN_REQUIRED' },

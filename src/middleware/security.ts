@@ -34,23 +34,53 @@ export const securityHeaders = (_req: Request, res: Response, next: NextFunction
 //
 //A GraphQL endpoint will happily execute a query nested hundreds of levels deep
 //and burn the whole instance doing it. Our deepest legitimate query is about 4
-//levels (ramadanSchedule -> medications -> fields), so 10 is generous.
+//levels (todayRoutines -> routines -> fields), so 10 is generous.
 const MAX_DEPTH = 10;
 
-const nodeDepth = (node: ASTNode, current = 0): number => {
+//FRAGMENTS COUNT TOWARDS THE DEPTH.
+//
+//This used to walk only the selection sets it could see directly, so a
+//fragment spread scored zero and everything nested inside it was invisible —
+//`{ a { ...F } }` measured 2 no matter how deep F went. Since a fragment may
+//also spread itself, that was a way to write an arbitrarily deep query and
+//never trip the limit.
+//
+//`seen` breaks the cycle. GraphQL's own rules reject a recursive fragment, but
+//this rule runs alongside those rather than after them, so the guard has to be
+//here or a self-referencing fragment loops forever before it is ever rejected.
+const nodeDepth = (
+    node: ASTNode,
+    getFragment: (name: string) => any,
+    current = 0,
+    seen: Set<string> = new Set(),
+): number => {
+    if ((node as any)?.kind === 'FragmentSpread') {
+        const name = (node as any).name.value;
+
+        if (seen.has(name)) return current;
+
+        const fragment = getFragment(name);
+
+        if (!fragment) return current;
+
+        //a spread is not itself a level — the fragment's own selections are
+        return nodeDepth(fragment, getFragment, current, new Set(seen).add(name));
+    }
+
     //only selection sets add depth
     const selections = (node as any)?.selectionSet?.selections;
 
     if (!selections?.length) return current;
 
     return Math.max(
-        ...selections.map((selection: ASTNode) => nodeDepth(selection, current + 1)),
+        ...selections.map((selection: ASTNode) =>
+            nodeDepth(selection, getFragment, current + 1, seen)),
     );
 };
 
 const depthLimitRule = (context: any) => ({
     OperationDefinition(node: ASTNode) {
-        const depth = nodeDepth(node);
+        const depth = nodeDepth(node, (name: string) => context.getFragment?.(name));
 
         if (depth > MAX_DEPTH) {
             context.reportError(

@@ -7,14 +7,17 @@ const guidanceSchema = new Schema({
     category: {
         type: String,
         required: true,
-        enum: ["ramadan", "menstruation", "pregnancy", "general", "nutrition"]
+        enum: ["menstruation", "pregnancy", "general", "nutrition"]
     },
-    //religious guidance and medical advice are kept apart on purpose —
-    //the app labels them differently so users never confuse the two
+    //Everything in this library is medical. The field is kept because it is
+    //already in the schema and in stored documents, and because a second kind
+    //(say "lifestyle") is plausible — but it has exactly one value today, so
+    //nothing should branch on it.
     kind: {
         type: String,
         required: true,
-        enum: ["religious", "medical"]
+        enum: ["medical"],
+        default: "medical"
     },
     title: {
         type: String,
@@ -25,7 +28,7 @@ const guidanceSchema = new Schema({
         type: String,
         required: true
     },
-    //scholar name or medical reference the content came from
+    //the medical reference the content came from
     source: {
         type: String,
         trim: true

@@ -2,15 +2,17 @@ import User from './../../models/user.js';
 import type { Context } from "../context.js"
 import { authCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
-import type { SignupArgs, LoginArgs, CompleteProfileArgs, ChangePasswordArgs, RequestPasswordResetArgs, ResetPasswordArgs, DeleteAccountArgs } from "../../utils/types.js"
+import type { SignupArgs, LoginArgs, CompleteProfileArgs, ChangePasswordArgs, RequestPasswordResetArgs, ResetPasswordArgs, DeleteAccountArgs, SetPreferencesArgs } from "../../utils/types.js"
 import { sendMail, passwordResetEmail } from "../../services/mailService.js"
 import { purgeUserData, countUserData } from "../../services/accountService.js"
 import crypto from "node:crypto"
-import { generateToken, sessionExpired } from "../../services/authServices.js"
+import { generateToken, revokeTokens, sessionExpired } from "../../services/authServices.js"
+import { assertValidTimezone } from "../../utils/datetime.js"
 import { assertValidEmail, assertValidPassword, assertValidName, assertInRange } from "../../utils/validation.js"
-import { hit } from "../../middleware/rateLimit.js"
+import { hit, clearHits } from "../../middleware/rateLimit.js"
 import { envConf } from "../../config/envConf.js"
 import bcrypt from "bcryptjs"
+import { rethrow } from "../../utils/resolverHelpers.js"
 
 //max length of an inline base64 avatar (~110KB of image data once decoded).
 //the app targets ~20KB, so this is a safety net, not the normal case.
@@ -27,14 +29,52 @@ const DUMMY_HASH = '$2b$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_ATTEMPTS = 8;
 
+//HOW MANY TIMES SOMEONE MAY GUESS THEIR CURRENT PASSWORD.
+//
+//Five, then the app sends them to the reset flow instead. This is a different
+//limit from the login one: the person here is already signed in, so this is not
+//about stopping an intruder getting in — it is about noticing that they have
+//genuinely forgotten it, and offering the way out rather than a sixth failure.
+const CHANGE_PW_MAX_ATTEMPTS = 5;
+const CHANGE_PW_WINDOW_MS = 60 * 60 * 1000;
+
 //password reset
 const RESET_TOKEN_TTL_MS = 30 * 60 * 1000;
 const RESET_WINDOW_MS = 60 * 60 * 1000;
 const RESET_MAX_REQUESTS = 5;
+//and how many wrong codes may be submitted for one account before it stops
+//listening. Generous enough for someone mistyping from a cracked screen.
+const RESET_MAX_GUESSES = 10;
 
-//store only the hash, never the token itself
+//store only the hash, never the code itself
 const hashResetToken = (token: string) =>
-    crypto.createHash('sha256').update(token).digest('hex');
+    crypto.createHash('sha256').update(token.trim().toUpperCase()).digest('hex');
+
+
+//THE RESET CODE PEOPLE ACTUALLY HAVE TO TYPE.
+//
+//This used to be 32 random bytes as hex — 64 characters. Cryptographically
+//excellent and completely unusable: nobody transcribes 64 characters from an
+//email into a phone, least of all on a cracked screen in a hurry.
+//
+//Eight characters from an alphabet with no 0/O and no 1/I/L, which are the
+//pairs people actually mistype. That is 32^8 ≈ 1.1 trillion combinations, and
+//a code is single-use, expires in 30 minutes, and sits behind a per-caller
+//limit on resetPassword. Guessing is not a realistic route in.
+const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+const CODE_LENGTH = 8;
+
+const generateResetCode = () => {
+    let code = '';
+
+    for (let i = 0; i < CODE_LENGTH; i += 1) {
+        //randomInt rather than randomBytes % length — the modulo version is
+        //very slightly biased towards the start of the alphabet
+        code += CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)];
+    }
+
+    return code;
+};
 
 
 
@@ -76,8 +116,10 @@ export default {
         //anyone can call this mutation directly
         assertValidEmail(email);
         assertValidPassword(password);
-        assertValidName(firstName, 'First name');
-        assertValidName(lastName, 'Last name');
+
+        //store what the check returns, not what arrived — it trims
+        const first = assertValidName(firstName, 'First name');
+        const last = assertValidName(lastName, 'Last name');
 
         //find user by email in db
         const existUser = await User.findOne({ email });
@@ -93,7 +135,7 @@ export default {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // create a user with hashed password and record when they agreed to the terms
-        const user = new User({ firstName, lastName, email, password: hashedPassword, gender, agreedToTerms: true, agreedToTermsAt: new Date() });
+        const user = new User({ firstName: first, lastName: last, email, password: hashedPassword, gender, agreedToTerms: true, agreedToTermsAt: new Date() });
 
         // save user to database
         await user.save();
@@ -110,13 +152,7 @@ export default {
           });
         }
 
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while creating account', {
-          extensions: { code: 'SIGNUP_FAILED' },
-        });
+        throw rethrow(error, 'Unexpected error while creating account', 'SIGNUP_FAILED');
       }
     },
 
@@ -129,11 +165,16 @@ export default {
           const email = input.email.trim().toLowerCase()
 
       try {
-        //lock the account out after too many failed attempts, regardless of
-        //which machine they come from
-        const attempts = hit(`login:${email}`, LOGIN_WINDOW_MS, LOGIN_MAX_ATTEMPTS);
+        //Lock the account out after too many FAILED attempts, regardless of
+        //which machine they come from.
+        //
+        //Only failures are counted, and a success clears the slate — this used
+        //to count every attempt, so somebody reinstalling the app or switching
+        //phones a few times in an afternoon could lock themselves out of their
+        //own account by successfully logging in.
+        const key = `login:${email}`;
 
-        if (!attempts.allowed) {
+        if (!hit(key, LOGIN_WINDOW_MS, LOGIN_MAX_ATTEMPTS, { peek: true }).allowed) {
           throw new GraphQLError('Too many failed attempts. Please try again later.', {
             extensions: { code: 'TOO_MANY_ATTEMPTS' },
           });
@@ -150,24 +191,60 @@ export default {
 
         //keep the message generic so we don't leak which part was wrong
         if (!user || !isMatch) {
+          hit(key, LOGIN_WINDOW_MS, LOGIN_MAX_ATTEMPTS);
+
           throw new GraphQLError('Invalid email or password', {
             extensions: { code: 'INVALID_CREDENTIALS' },
           });
         }
+
+        //they proved who they are, so earlier mistypes stop counting
+        clearHits(key);
 
         // generate token for the user with they id
         const token = generateToken(user.id, user.get('tokenVersion') ?? 0);
 
         //return user object and user's token
         return { token, user };
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while logging in', 'LOGIN_FAILED');
+      }
+    },
+
+    //TIMEZONE AND UNITS.
+    //
+    //The app sends the phone's own timezone on launch, so the two stay in step
+    //when someone travels. Everything that groups by day reads this, which is
+    //what stops a dose logged at 00:30 landing on yesterday.
+    setPreferences: async (_: unknown, { input }: SetPreferencesArgs, context: Context) => {
+      authCheck(context);
+
+      const { timezone, unitSystem } = input;
+
+      try {
+        const user = context.user!;
+
+        if (timezone !== undefined) {
+          user.set('timezone', assertValidTimezone(timezone));
         }
 
-        throw new GraphQLError('Unexpected error while logging in', {
-          extensions: { code: 'LOGIN_FAILED' },
-        });
+        if (unitSystem !== undefined) {
+          if (unitSystem !== 'metric' && unitSystem !== 'imperial') {
+            throw new GraphQLError('Unit system must be metric or imperial', {
+              extensions: { code: 'BAD_USER_INPUT' },
+            });
+          }
+
+          user.set('unitSystem', unitSystem);
+        }
+
+        await user.save();
+
+        return user;
+      } catch (error) {
+        throw rethrow(
+          error, 'Unexpected error while saving preferences', 'PREFERENCES_SAVE_FAILED',
+        );
       }
     },
 
@@ -201,14 +278,8 @@ export default {
         const token = generateToken(user.id, user.get('tokenVersion') ?? 0, origin);
 
         return { token, user };
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while refreshing session', {
-          extensions: { code: 'SESSION_REFRESH_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while refreshing session', 'SESSION_REFRESH_FAILED');
       }
     },
 
@@ -217,24 +288,14 @@ export default {
       authCheck(context);
 
       try {
-        const user = context.user!;
-
         //bumping the version is what actually invalidates the token. The app
         //also drops it from secure storage, but that alone would leave a copied
         //token working for the rest of its 7 days.
-        user.set('tokenVersion', (user.get('tokenVersion') ?? 0) + 1);
-
-        await user.save();
+        await revokeTokens(context.user!.id);
 
         return true;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while logging out', {
-          extensions: { code: 'LOGOUT_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while logging out', 'LOGOUT_FAILED');
       }
     },
 
@@ -266,31 +327,56 @@ export default {
         const isMatch = await bcrypt.compare(currentPassword, user.password);
 
         if (!isMatch) {
+          //COUNT THE FAILURES.
+          //
+          //Someone who cannot remember their current password will not remember
+          //it on the sixth try either, and letting them keep guessing is both a
+          //dead end for them and a slow brute-force for us. After
+          //CHANGE_PW_MAX_ATTEMPTS we stop accepting guesses and tell the app to
+          //offer the reset flow instead, which proves identity by email rather
+          //than by memory.
+          const attempts = hit(
+            `changepw:${user.id}`,
+            CHANGE_PW_WINDOW_MS,
+            CHANGE_PW_MAX_ATTEMPTS,
+          );
+
+          if (!attempts.allowed) {
+            throw new GraphQLError(
+              'Too many incorrect attempts. Reset your password by email instead.',
+              { extensions: { code: 'USE_PASSWORD_RESET' } },
+            );
+          }
+
           throw new GraphQLError('Current password is incorrect', {
-            extensions: { code: 'INVALID_CREDENTIALS' },
+            extensions: {
+              code: 'INVALID_CREDENTIALS',
+              //so the app can warn before the door closes
+              attemptsLeft: attempts.remaining,
+            },
           });
         }
 
-        user.set('password', await bcrypt.hash(newPassword, 10));
+        //a correct password clears the counter, so an honest mistype earlier in
+        //the day doesn't count against someone weeks later
+        clearHits(`changepw:${user.id}`);
 
-        //changing a password must sign out every other device — that is the
-        //whole point of changing it after a suspected compromise
-        user.set('tokenVersion', (user.get('tokenVersion') ?? 0) + 1);
+        user.set('password', await bcrypt.hash(newPassword, 10));
 
         await user.save();
 
+        //Changing a password must sign out every other device — that is the
+        //whole point of changing it after a suspected compromise. Done after
+        //the password is safely stored, so a failure here leaves the account
+        //usable rather than half-changed.
+        const version = await revokeTokens(user.id);
+
         //hand back a fresh token so the device doing the change stays signed in
-        const token = generateToken(user.id, user.get('tokenVersion'));
+        const token = generateToken(user.id, version);
 
         return { token, user };
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while changing password', {
-          extensions: { code: 'PASSWORD_CHANGE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while changing password', 'PASSWORD_CHANGE_FAILED');
       }
     },
 
@@ -317,34 +403,60 @@ export default {
           return true;
         }
 
-        //raw token goes to the user, only its hash is stored
-        const token = crypto.randomBytes(32).toString('hex');
+        //the code goes to the user, only its hash is stored
+        const token = generateResetCode();
 
         user.set('passwordResetTokenHash', hashResetToken(token));
         user.set('passwordResetExpires', new Date(Date.now() + RESET_TOKEN_TTL_MS));
 
         await user.save();
 
-        const mail = passwordResetEmail(token);
+        const mail = passwordResetEmail(token, email);
 
-        await sendMail({ to: email, subject: mail.subject, body: mail.body });
+        await sendMail({
+          to: email,
+          subject: mail.subject,
+          body: mail.body,
+          html: mail.html,
+        });
 
         return true;
       } catch (error: any) {
+        //this one keeps its own chain rather than going straight to rethrow:
+        //the three mail failures below are different problems with different
+        //advice, and collapsing them would tell a tester "contact support" when
+        //the real answer is "try again"
         if (error instanceof GraphQLError) {
           throw error;
         }
 
-        //mail not configured, or the provider is down
+        //mail not configured at all — a deployment problem, not a user one
         if (error?.message === 'MAIL_NOT_CONFIGURED') {
           throw new GraphQLError('Password reset is not available yet. Please contact support.', {
             extensions: { code: 'RESET_UNAVAILABLE' },
           });
         }
 
-        throw new GraphQLError('Unexpected error while requesting a reset', {
-          extensions: { code: 'RESET_REQUEST_FAILED' },
-        });
+        //Still on Resend's shared sender, which only delivers to the account
+        //owner. A setup problem, and one that would otherwise look to a tester
+        //like the reset silently doing nothing.
+        if (error?.message === 'MAIL_RECIPIENT_NOT_ALLOWED') {
+          throw new GraphQLError(
+            'Email is not fully set up yet, so the code could not be sent to that address.',
+            { extensions: { code: 'RESET_EMAIL_RESTRICTED' } },
+          );
+        }
+
+        //Resend refused it, or the network did. Distinct from the above so the
+        //app can say "try again" rather than "this feature doesn't exist" —
+        //and so a provider outage doesn't look like a missing feature.
+        if (error?.message === 'MAIL_SEND_FAILED') {
+          throw new GraphQLError('We could not send the email just now. Please try again.', {
+            extensions: { code: 'RESET_EMAIL_FAILED' },
+          });
+        }
+
+        throw rethrow(error, 'Unexpected error while requesting a reset', 'RESET_REQUEST_FAILED');
       }
     },
 
@@ -355,6 +467,23 @@ export default {
 
       try {
         assertValidPassword(newPassword);
+
+        //HOW MANY CODES MAY BE GUESSED FOR ONE ACCOUNT.
+        //
+        //Only the *request* side was throttled before, so the code itself could
+        //be submitted as often as the per-caller budget allowed — and that
+        //budget keys on IP, which is one header away from being another
+        //person's. Eight characters from a 31-letter alphabet is a big space,
+        //but a live code sits there for 30 minutes and the guessing should cost
+        //something. Counted per account, so one attacker cannot burn through
+        //everyone's.
+        const guessKey = `resetguess:${email}`;
+
+        if (!hit(guessKey, RESET_WINDOW_MS, RESET_MAX_GUESSES, { peek: true }).allowed) {
+          throw new GraphQLError('Too many attempts. Please request a new code.', {
+            extensions: { code: 'TOO_MANY_ATTEMPTS' },
+          });
+        }
 
         const user = await User.findOne({ email }).select('+passwordResetTokenHash +passwordResetExpires +password');
 
@@ -373,10 +502,16 @@ export default {
           );
 
         if (!isValid) {
+          hit(guessKey, RESET_WINDOW_MS, RESET_MAX_GUESSES);
+
           throw new GraphQLError('That reset code is invalid or has expired', {
             extensions: { code: 'INVALID_RESET_TOKEN' },
           });
         }
+
+        //the code was right, so neither counter has anything left to protect
+        clearHits(guessKey);
+        clearHits(`reset:${email}`);
 
         user.set('password', await bcrypt.hash(newPassword, 10));
 
@@ -384,24 +519,18 @@ export default {
         user.set('passwordResetTokenHash', undefined);
         user.set('passwordResetExpires', undefined);
 
-        //whoever reset the password gets the account; everyone else is signed out
-        user.set('tokenVersion', (user.get('tokenVersion') ?? 0) + 1);
-
         await user.save();
 
-        const authToken = generateToken(user.id, user.get('tokenVersion'));
+        //whoever reset the password gets the account; everyone else is signed out
+        const version = await revokeTokens(user.id);
+
+        const authToken = generateToken(user.id, version);
 
         return { token: authToken, user };
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
+      } catch (error) {
         //timingSafeEqual throws when the buffers differ in length, which just
         //means a malformed code was submitted
-        throw new GraphQLError('That reset code is invalid or has expired', {
-          extensions: { code: 'INVALID_RESET_TOKEN' },
-        });
+        throw rethrow(error, 'That reset code is invalid or has expired', 'INVALID_RESET_TOKEN');
       }
     },
 
@@ -460,14 +589,8 @@ export default {
         console.log('ACCOUNT_DELETED:', JSON.stringify(removed));
 
         return true;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while deleting your account', {
-          extensions: { code: 'DELETE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while deleting your account', 'DELETE_FAILED');
       }
     },
 
@@ -477,30 +600,29 @@ export default {
           //make sure the user is logged in before updating profile
           authCheck(context);
 
-          const { firstName, lastName, image, height, weight, religion } = input
+          const { firstName, lastName, image, height, weight } = input
 
       try {
         //grab the logged in user from context
         const user = context.user!;
 
-        //names can be edited later, but they can't be blanked out
-        if (firstName !== undefined && !firstName.trim()) {
-          throw new GraphQLError('First name cannot be empty', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
-        if (lastName !== undefined && !lastName.trim()) {
-          throw new GraphQLError('Last name cannot be empty', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
+        //Names can be edited later, but they can't be blanked out. Through the
+        //same check signup uses rather than a second inline copy, which had
+        //drifted: it missed the length cap, and it called .trim() on a value
+        //the schema allows to be null.
+        const first = firstName === undefined || firstName === null
+          ? undefined
+          : assertValidName(firstName, 'First name');
 
-        //we only store an image URL (the app uploads the photo to cloudinary
-        //first) — reject anything that isn't an http(s) link so base64 blobs
-        //can't bloat the database
+        const last = lastName === undefined || lastName === null
+          ? undefined
+          : assertValidName(lastName, 'Last name');
+
+        //An avatar is either a hosted URL — the app uploads to Cloudinary and
+        //sends the link back — or a small inline base64 image, which is the
+        //fallback when the upload isn't configured. Anything else is rejected,
+        //and the base64 form is size-capped below so it can't bloat the row.
         if (image !== undefined && image !== null && image !== '') {
-          //we accept either a hosted URL (if we move to a CDN later) or a small
-          //inline base64 image — the app downsizes avatars before sending
           const isUrl = /^https?:\/\/\S+$/i.test(image);
           const isDataImage = /^data:image\/(jpeg|jpg|png|webp);base64,/i.test(image);
 
@@ -523,33 +645,23 @@ export default {
         if (weight !== undefined && weight !== null) assertInRange(weight, 2, 500, 'Weight');
 
         //only update the fields the user actually sent
-        if (firstName !== undefined) user.set('firstName', firstName.trim());
-        if (lastName !== undefined) user.set('lastName', lastName.trim());
+        if (first !== undefined) user.set('firstName', first);
+        if (last !== undefined) user.set('lastName', last);
         if (image !== undefined) user.set('image', image);
         if (height !== undefined) user.set('height', height);
         if (weight !== undefined) user.set('weight', weight);
-        if (religion !== undefined) user.set('religion', religion);
 
         // save updated user to database
         await user.save();
 
         //return the updated user
         return user;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        //mongoose enum errors (bad gender/religion value) land here
-        if (error?.name === 'ValidationError') {
-          throw new GraphQLError('Invalid profile data', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
-
-        throw new GraphQLError('Unexpected error while updating profile', {
-          extensions: { code: 'PROFILE_UPDATE_FAILED' },
-        });
+      } catch (error) {
+        //mongoose enum errors (a bad gender value) land here
+        throw rethrow(
+          error, 'Unexpected error while updating profile', 'PROFILE_UPDATE_FAILED',
+          'Invalid profile data',
+        );
       }
     },
 
@@ -580,14 +692,8 @@ export default {
 
         //return the updated user
         return user;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while upgrading plan', {
-          extensions: { code: 'UPGRADE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while upgrading plan', 'UPGRADE_FAILED');
       }
     },
   },

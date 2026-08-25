@@ -9,14 +9,12 @@ export const userType = /* GraphQL */ `
         height: Float
         weight: Float
         gender: String
-        religion: String
         plan: String!
         role: String!
         waterGoal: Float
         cycleRegularity: String
-        ramadanMode: Boolean
-        suhoorTime: String
-        iftarTime: String
+        timezone: String
+        unitSystem: String
     }
 `;
 
@@ -45,7 +43,13 @@ export const completeProfileInput = /* GraphQL */ `
         image: String
         height: Float
         weight: Float
-        religion: String
+    }
+`;
+
+export const setPreferencesInput = /* GraphQL */ `
+    input SetPreferencesInput {
+        timezone: String
+        unitSystem: String
     }
 `;
 

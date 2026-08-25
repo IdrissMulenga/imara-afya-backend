@@ -42,7 +42,11 @@ export const assertValidPassword = (password: string) => {
 };
 
 
-//names are shown back to the user and stored — keep them sane
+//NAMES ARE SHOWN BACK TO THE USER AND STORED — keep them sane.
+//
+//Returns the trimmed name, and callers should store what comes back. Signup
+//used to validate the trimmed version and then save the raw one, so " Ana "
+//was accepted as valid and then greeted the user with the spaces still on.
 export const assertValidName = (value: string, label: string) => {
     const trimmed = value.trim();
 
@@ -53,6 +57,8 @@ export const assertValidName = (value: string, label: string) => {
     if (trimmed.length > 80) {
         throw badInput(`${label} is too long`);
     }
+
+    return trimmed;
 };
 
 

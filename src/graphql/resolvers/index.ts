@@ -3,10 +3,9 @@ import healthRecordResolver from "./healthRecordResolver.js"
 import medicationResolver from "./medicationResolver.js"
 import periodCycleResolver from "./periodCycleResolver.js"
 import pregnancyResolver from "./pregnancyResolver.js"
-import hospitalResolver from "./hospitalResolver.js"
 import habitResolver from "./habitResolver.js"
-import ramadanResolver from "./ramadanResolver.js"
 import guidanceResolver from "./guidanceResolver.js"
+import wellbeingResolver from "./wellbeingResolver.js"
 
 export const resolvers = {
     Query: {
@@ -15,10 +14,9 @@ export const resolvers = {
         ...medicationResolver.Query,
         ...periodCycleResolver.Query,
         ...pregnancyResolver.Query,
-        ...hospitalResolver.Query,
         ...habitResolver.Query,
-        ...ramadanResolver.Query,
-        ...guidanceResolver.Query
+        ...guidanceResolver.Query,
+        ...wellbeingResolver.Query
     },
     Mutation: {
         ...userResolver.Mutation,
@@ -26,9 +24,8 @@ export const resolvers = {
         ...medicationResolver.Mutation,
         ...periodCycleResolver.Mutation,
         ...pregnancyResolver.Mutation,
-        ...hospitalResolver.Mutation,
         ...habitResolver.Mutation,
-        ...ramadanResolver.Mutation,
-        ...guidanceResolver.Mutation
+        ...guidanceResolver.Mutation,
+        ...wellbeingResolver.Mutation
     }
 }

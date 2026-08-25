@@ -4,7 +4,22 @@ import { authCheck, premiumCheck } from './../../services/authServices.js';
 import { GraphQLError } from 'graphql';
 import type { MyHealthRecordsArgs, AddHealthRecordArgs, UpdateHealthRecordArgs, RemoveHealthRecordArgs, AddAttachmentArgs, RemoveAttachmentArgs } from "../../utils/types.js"
 import { LIMITS } from "../../utils/limits.js"
+import { rethrow } from "../../utils/resolverHelpers.js"
 
+
+//HOW MANY FILES MAY HANG OFF ONE RECORD.
+//
+//Attachments are stored inside the record document, and a mongo document may
+//not exceed 16MB. Unbounded, a loop calling addAttachment would eventually
+//push a record past that — at which point it can no longer be saved OR
+//repaired through the API, so one person's prescription history is stuck for
+//good. A cap turns that into a message.
+const MAX_ATTACHMENTS = 20;
+
+//The app uploads to Cloudinary and sends back the hosted URL, so this should
+//only ever be an http(s) link. Rejecting anything else keeps a base64 blob —
+//or a `javascript:` string headed for a WebView — out of the document.
+const URL_RE = /^https?:\/\/\S+$/i;
 
 
 export default {
@@ -37,21 +52,12 @@ export default {
         await record.save();
 
         return record;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
+      } catch (error) {
         //bad type value (not in the enum) lands here
-        if (error?.name === 'ValidationError') {
-          throw new GraphQLError('Invalid health record data', {
-            extensions: { code: 'BAD_USER_INPUT' },
-          });
-        }
-
-        throw new GraphQLError('Unexpected error while adding record', {
-          extensions: { code: 'RECORD_CREATE_FAILED' },
-        });
+        throw rethrow(
+          error, 'Unexpected error while adding record', 'RECORD_CREATE_FAILED',
+          'Invalid health record data',
+        );
       }
     },
 
@@ -78,14 +84,8 @@ export default {
         await record.save();
 
         return record;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while updating record', {
-          extensions: { code: 'RECORD_UPDATE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while updating record', 'RECORD_UPDATE_FAILED');
       }
     },
 
@@ -104,14 +104,8 @@ export default {
         }
 
         return true;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while removing record', {
-          extensions: { code: 'RECORD_DELETE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while removing record', 'RECORD_DELETE_FAILED');
       }
     },
 
@@ -132,20 +126,28 @@ export default {
           });
         }
 
+        if (!URL_RE.test(url?.trim() ?? '')) {
+          throw new GraphQLError('Attachment must be an http(s) link', {
+            extensions: { code: 'BAD_USER_INPUT' },
+          });
+        }
+
+        const attachments = record.get('attachments');
+
+        if (attachments.length >= MAX_ATTACHMENTS) {
+          throw new GraphQLError(`A record can hold up to ${MAX_ATTACHMENTS} files`, {
+            extensions: { code: 'LIMIT_REACHED' },
+          });
+        }
+
         //push the new attachment onto the record
-        record.get('attachments').push({ url, name });
+        attachments.push({ url: url.trim(), name: name?.trim() || undefined });
 
         await record.save();
 
         return record;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while adding attachment', {
-          extensions: { code: 'ATTACHMENT_ADD_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(error, 'Unexpected error while adding attachment', 'ATTACHMENT_ADD_FAILED');
       }
     },
 
@@ -179,14 +181,10 @@ export default {
         await record.save();
 
         return record;
-      } catch (error: any) {
-        if (error instanceof GraphQLError) {
-          throw error;
-        }
-
-        throw new GraphQLError('Unexpected error while removing attachment', {
-          extensions: { code: 'ATTACHMENT_REMOVE_FAILED' },
-        });
+      } catch (error) {
+        throw rethrow(
+          error, 'Unexpected error while removing attachment', 'ATTACHMENT_REMOVE_FAILED',
+        );
       }
     },
   },
