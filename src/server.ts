@@ -1,69 +1,113 @@
-import app from './app.js';
-import { connectDB, disconnectDB } from "./config/db.js"
-import { envConf } from './config/envConf.js';
-import { assertPurgeCoverage } from './services/accountService.js';
+import type { Server } from 'node:http';
+import { env, auditEnv } from './config/env.js';
+import { connectDatabase, disconnectDatabase, syncIndexes } from './config/database.js';
+import { logger } from './core/logger.js';
+import { createApp } from './http/app.js';
+import { modules } from './modules/index.js';
+import {
+  registerOwnedModels,
+  assertPurgeCoverage,
+} from './modules/auth/services/account.service.js';
 
+//BOOT AND SHUTDOWN.
+//
+//Boot order is deliberate:
+//  1. register owned models, so the deletion guard has something to check
+//  2. connect the database — models must be registered with mongoose first
+//  3. assert deletion coverage, and refuse to start if a model is unaccounted for
+//  4. sync indexes (production only)
+//  5. run each module's onStart
+//  6. listen
+//
+//Anything that can fail permanently fails BEFORE the port is open. A process
+//that never listens is replaced by the platform; one that listens and then
+//half-works serves errors to real users.
 
-const startServer = async () => {
-    try {
-        //Importing app.js above has registered every model, so this can now see
-        //them all. It throws if any collection holding user data would survive
-        //an account deletion — better to refuse to start than to promise
-        //someone their data is gone and leave it there.
-        assertPurgeCoverage()
+const start = async (): Promise<void> => {
+  for (const warning of auditEnv()) {
+    logger.warn(warning);
+  }
 
-        await connectDB()
+  for (const module of modules) {
+    registerOwnedModels(module.ownedModels ?? []);
+  }
 
-        const server = app.listen(envConf.PORT, () => {
-            console.log(`server started at port ${envConf.PORT}.......`)
-        })
+  await connectDatabase();
+  assertPurgeCoverage();
+  await syncIndexes();
 
-        //GRACEFUL SHUTDOWN — hosting platforms send SIGTERM before replacing an
-        //instance. Without this, requests in flight during a deploy are dropped
-        //and a user sees a failure for something that actually worked.
-        //A second signal while the first shutdown is draining would call
-        //server.close() twice — the second callback never fires, so the Mongo
-        //pool is closed from under requests that are still finishing.
-        let shuttingDown = false
-
-        const shutdown = async (signal: string) => {
-            if (shuttingDown) return
-
-            shuttingDown = true
-
-            console.log(`${signal} received, shutting down......`)
-
-            server.close(async () => {
-                await disconnectDB()
-                process.exit(0)
-            })
-
-            //don't wait forever for a stuck connection to drain
-            setTimeout(() => {
-                console.error('Forced shutdown after timeout')
-                process.exit(1)
-            }, 10_000).unref()
-        }
-
-        process.on('SIGTERM', () => shutdown('SIGTERM'))
-        process.on('SIGINT', () => shutdown('SIGINT'))
-
-        //A rejected promise nobody awaited is a bug worth seeing, but not worth
-        //dropping every in-flight request over — most of ours come from a
-        //single failed query, and the resolver already answered with an error.
-        //An uncaught EXCEPTION is different: the process state is unknown after
-        //one, so that path below does shut down.
-        process.on('unhandledRejection', (reason) => {
-            console.error('UNHANDLED_REJECTION:', reason)
-        })
-
-        process.on('uncaughtException', (error) => {
-            console.error('UNCAUGHT_EXCEPTION:', error)
-            shutdown('uncaughtException')
-        })
-    } catch (error: any) {
-        console.log('Error starting server:', error.message);
+  for (const module of modules) {
+    if (module.onStart) {
+      await module.onStart();
+      logger.debug('Module started', { module: module.name });
     }
-}
+  }
 
-startServer()
+  const app = createApp();
+  const server: Server = app.listen(env.PORT, () => {
+    logger.info('Imara Afya API listening', {
+      port: env.PORT,
+      env: env.NODE_ENV,
+      modules: modules.length,
+    });
+  });
+
+  //GRACEFUL SHUTDOWN.
+  //
+  //Stop accepting connections, let in-flight requests finish, then close the
+  //database pool. Closing the pool first would fail every request that is
+  //still running, which is the opposite of graceful.
+  let shuttingDown = false;
+
+  const shutdown = async (signal: string): Promise<void> => {
+    //A second Ctrl-C must not close the pool underneath requests that the
+    //first one is still draining.
+    if (shuttingDown) {
+      logger.warn('Shutdown already in progress', { signal });
+      return;
+    }
+    shuttingDown = true;
+    logger.info('Shutting down', { signal });
+
+    //A request that hangs must not hold the process open forever. The platform
+    //will SIGKILL us eventually anyway; exiting on our own terms at least runs
+    //the pool close.
+    const forceExit = setTimeout(() => {
+      logger.error('Shutdown timed out, exiting now');
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
+
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await disconnectDatabase();
+
+    clearTimeout(forceExit);
+    logger.info('Shutdown complete');
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
+
+  //An unhandled rejection leaves the process in an unknown state. Log it with
+  //its stack and let the platform restart a clean one.
+  process.on('unhandledRejection', (reason) => {
+    logger.error('Unhandled promise rejection', {
+      reason: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+    });
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.error('Uncaught exception', { error: error.message, stack: error.stack });
+    process.exit(1);
+  });
+};
+
+start().catch((error: unknown) => {
+  logger.error('Failed to start', {
+    error: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+  });
+  process.exit(1);
+});
