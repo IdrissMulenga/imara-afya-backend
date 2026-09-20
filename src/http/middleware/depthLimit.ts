@@ -9,15 +9,6 @@ import {
 } from 'graphql';
 import { env } from '../../config/env.js';
 
-//QUERY DEPTH LIMIT.
-//
-//A GraphQL endpoint will happily execute a query nested hundreds of levels
-//deep and burn the whole instance doing it. Our deepest legitimate query is
-//about four levels, so ten is generous and still stops the attack.
-//
-//Fragments count towards depth: a query that stays shallow while spreading a
-//deeply nested fragment is the obvious way around a naive counter.
-
 const depthOf = (
   node: ASTNode,
   fragments: Map<string, ASTNode>,

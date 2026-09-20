@@ -15,6 +15,19 @@ error codes. Read [SCALING.md](SCALING.md) before assuming something (rate
 limiting, indexes, validation) is unhandled, and check its "Still open" list
 before telling a user a gap is unaddressed.
 
+## Review standard
+
+Structural changes are reviewed against
+[.claude/skills/thermo-nuclear-code-quality-review](.claude/skills/thermo-nuclear-code-quality-review/SKILL.md).
+It is deliberately strict: it treats a file crossing 1000 lines, a new
+special-case branch in an existing flow, copy-pasted logic where a helper
+belongs, and feature logic in a shared path as design problems rather than
+nits, and it pushes for restructurings that delete complexity instead of
+relocating it.
+
+Run it before merging anything that adds a module or changes a boundary. It is
+`disable-model-invocation: true`, so it runs only when asked for by name.
+
 ## Commands
 
 ```bash

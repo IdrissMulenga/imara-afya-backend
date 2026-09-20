@@ -1,11 +1,5 @@
 import { Schema, model, type Document, type Types } from 'mongoose';
 
-//THE USER DOCUMENT.
-//
-//Everything that identifies an account and controls access to it. Profile
-//detail that is not load-bearing for auth (photo, height, goals) hangs off the
-//same document for now, because one read serves the whole dashboard and a
-//separate profile collection would mean a join on every request.
 
 export interface UserDocument extends Document {
   _id: Types.ObjectId;
@@ -19,9 +13,6 @@ export interface UserDocument extends Document {
   emailVerifiedAt: Date | null;
 
   //--- session control ---
-  //Bumped on logout, password change and password reset. Every issued token
-  //carries the value it was minted under; a token whose value is behind this
-  //one is dead. That is the whole revocation mechanism.
   tokenVersion: number;
 
   //Feeds the five-attempt lockout on changePassword. Cleared by a correct one.
@@ -95,7 +86,7 @@ const userSchema = new Schema<UserDocument>(
     stepGoal: { type: Number, default: 8000, min: 500, max: 100000 },
     sleepGoalHours: { type: Number, default: 8, min: 3, max: 14 },
 
-    role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    role: { type: String, default: 'user' },
   },
   {
     timestamps: true,

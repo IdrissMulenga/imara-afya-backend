@@ -1,15 +1,5 @@
 import { ErrorCode, type ErrorCodeValue } from './codes.js';
 
-//DOMAIN ERRORS THAT KNOW NOTHING ABOUT GRAPHQL.
-//
-//Services throw `AppError`. Only the resolver layer converts it into a
-//`GraphQLError`. That separation is what lets a service be called from a
-//script, a queue worker or a REST handler later without dragging the GraphQL
-//runtime along with it.
-//
-//`expose` marks an error whose message is safe to show a user. Anything that
-//is not exposed becomes a generic message on the way out, because an internal
-//message is a free hint to whoever is probing the API.
 
 export class AppError extends Error {
   public readonly code: ErrorCodeValue;
