@@ -2,15 +2,6 @@ import type { Request, Response, NextFunction } from 'express';
 import { createHash } from 'node:crypto';
 import { env } from '../../config/env.js';
 
-//IN-MEMORY COUNTERS, ONE BUCKET PER KEY.
-//
-//Deliberate for the first users: no Redis to run, no extra cost, and a single
-//instance is all the traffic needs. Two known limits come with it — the counts
-//reset when the process restarts, and they are NOT shared between instances.
-//
-//The moment a second instance runs, swap the Map for Redis. The shape of
-//`hit()` is what the Redis version should keep, and nothing that calls it
-//needs to change.
 
 type Bucket = { count: number; resetAt: number };
 
@@ -22,7 +13,6 @@ const sweep = (now: number): void => {
   }
 };
 
-//Sweep every five minutes rather than on every request. `unref` so a pending
 //timer never holds the process open during a graceful shutdown.
 const SWEEP_MS = 5 * 60 * 1000;
 const sweepTimer = setInterval(() => sweep(Date.now()), SWEEP_MS);
@@ -56,13 +46,11 @@ export const hit = (key: string, windowMs: number, max: number): HitResult => {
   return { allowed: true, remaining: max - bucket.count, retryAfterSeconds: 0 };
 };
 
-//Bucket keys that contain an email are hashed, so the in-memory map never
+
 //holds a plaintext address that a heap dump would expose.
 export const bucketKey = (...parts: string[]): string =>
   createHash('sha256').update(parts.join(':')).digest('hex').slice(0, 32);
 
-//The per-IP cap on the HTTP endpoint. For GraphQL this is a blunt instrument —
-//every operation arrives at the same URL — so it is a backstop, and the real
 //limits are per-field in operationLimit.ts.
 export const ipRateLimit = (req: Request, res: Response, next: NextFunction): void => {
   const key = bucketKey('ip', req.ip ?? 'unknown');

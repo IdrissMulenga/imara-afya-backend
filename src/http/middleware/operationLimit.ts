@@ -3,27 +3,14 @@ import { GraphQLError, getOperationAST, Kind } from 'graphql';
 import type { Context } from '../../core/context.js';
 import { hit, bucketKey } from './rateLimit.js';
 
-//PER-OPERATION RATE LIMITING.
-//
-//The IP limiter counts HTTP requests, which for GraphQL is almost meaningless:
-//every operation arrives at the same URL, so `login` and `logWater` spend from
-//one budget, and a single POST can carry several fields at once.
-//
-//This plugin counts the FIELDS actually executed, so the abusable can be
-//limited on their own terms without throttling normal use.
-//
-//It shares the in-memory buckets in rateLimit.ts and inherits the same two
-//limits: counts reset on restart and are not shared between instances.
 
 type Budget = { windowMs: number; max: number };
 
-//An operation may carry more than one budget. A burst window stops a stuck
-//retry loop or a double-tapped button hammering us within seconds; the longer
+
 //window is what actually caps sustained abuse. Both must pass.
 type Rule = {
   budgets: Budget[];
-  //Which identity the budget belongs to. `email` is the important one: an
-  //unauthenticated attacker walking a list of addresses has no user id and can
+
   //rotate IPs, so only the target address caps the attempts per account.
   keyBy: 'user' | 'ip' | 'email' | 'ip+email';
 };
@@ -108,9 +95,7 @@ const identityFor = (rule: Rule, context: Context, email?: string): string => {
   }
 };
 
-//Pull the target address out of the arguments so a budget can be keyed to it.
-//Only literal values are readable here; a variable is resolved later, so a
-//caller using variables falls back to the IP-only key. That is acceptable —
+
 //the IP budget still applies, and the per-account cap is a second layer.
 const emailFromArgs = (args: readonly unknown[]): string | undefined => {
   for (const argument of args as { name?: { value: string }; value?: unknown }[]) {

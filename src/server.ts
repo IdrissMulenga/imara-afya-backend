@@ -9,20 +9,6 @@ import {
   assertPurgeCoverage,
 } from './modules/auth/services/account.service.js';
 
-//BOOT AND SHUTDOWN.
-//
-//Boot order is deliberate:
-//  1. register owned models, so the deletion guard has something to check
-//  2. connect the database — models must be registered with mongoose first
-//  3. assert deletion coverage, and refuse to start if a model is unaccounted for
-//  4. sync indexes (production only)
-//  5. run each module's onStart
-//  6. listen
-//
-//Anything that can fail permanently fails BEFORE the port is open. A process
-//that never listens is replaced by the platform; one that listens and then
-//half-works serves errors to real users.
-
 const start = async (): Promise<void> => {
   for (const warning of auditEnv()) {
     logger.warn(warning);
@@ -52,10 +38,6 @@ const start = async (): Promise<void> => {
     });
   });
 
-  //GRACEFUL SHUTDOWN.
-  //
-  //Stop accepting connections, let in-flight requests finish, then close the
-  //database pool. Closing the pool first would fail every request that is
   //still running, which is the opposite of graceful.
   let shuttingDown = false;
 

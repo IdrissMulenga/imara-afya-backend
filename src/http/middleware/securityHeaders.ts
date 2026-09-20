@@ -1,12 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { env } from '../../config/env.js';
 
-//SECURITY HEADERS.
-//
-//Hand-rolled rather than pulling in helmet: this is a JSON API with no browser
-//UI of its own, so only a handful of headers actually apply. Add helmet if a
-//web dashboard is ever served from this same process.
-
 export const securityHeaders = (_req: Request, res: Response, next: NextFunction): void => {
   //don't let a browser guess a response is HTML and run it
   res.setHeader('X-Content-Type-Options', 'nosniff');

@@ -96,10 +96,7 @@ const deliver = async (params: {
 };
 
 //SIGNUP.
-//
-//Returns a working session immediately. Verification happens afterwards, from
-//inside the app — an unverified user can track their day, and the one thing
-//they cannot do is recover the account, because sending a recovery code to an
+
 //unproven address is how an account gets handed to a typo.
 export const signup = async (input: {
   email: string;

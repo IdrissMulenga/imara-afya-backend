@@ -1,14 +1,5 @@
 import 'dotenv/config';
 
-//ENVIRONMENT CONFIGURATION.
-//
-//Every value the app reads from the environment is parsed and validated HERE,
-//once, at import time. Nothing else in the codebase touches `process.env`.
-//
-//The reason is failure timing. A missing JWT_SECRET discovered when the first
-//user tries to log in is an outage; discovered at boot it is a deploy that
-//never goes live. `required()` below throws, the process exits, and the old
-//instance keeps serving.
 
 const required = (key: string): string => {
   const value = process.env[key];
