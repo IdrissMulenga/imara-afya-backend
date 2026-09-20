@@ -25,33 +25,40 @@ sent traffic.
 
 ## Layout
 
+Clean architecture. Dependencies point inward; `domain/` is the centre.
+
 ```
 src/
-  config/        env, database, row caps
-  core/          errors, logger, module contract, schema builder, resolver guards
-  http/          express app and middleware
-  modules/       one folder per feature
-  shared/        utilities used across modules
-  server.ts      boot and graceful shutdown
+  domain/          entities, value objects, repository interfaces — no frameworks
+  application/     use cases and the ports they depend on
+  infrastructure/  mongoose, Resend, JWT, bcrypt, logging, config
+  interfaces/      GraphQL and HTTP
+  shared/utils/    pure helpers
+  container.ts     composition root — the only place concretes meet ports
+  main.ts          boot and graceful shutdown
 ```
+
+The payoff: a use case can be exercised with no database and no mail provider,
+and replacing MongoDB or GraphQL means new files in one outer folder plus one
+line in `container.ts`.
 
 ## Adding a feature
 
-1. Create `src/modules/<name>/`.
-2. Export a `FeatureModule` from its `index.ts`.
-3. Add one line to `src/modules/index.ts`.
+1. `domain/<feature>/` — entities, value objects, repository interfaces
+2. `application/<feature>/` — use cases and an `index.ts` assembling them
+3. `infrastructure/database/mongoose/` — schema, mapper, repository impl
+4. `interfaces/graphql/<feature>/` — typedefs and resolvers
+5. `container.ts` — wire it, register its purger, add it to the schema
 
-That is the whole checklist. The schema builder reads the module's SDL, its
-resolver map and its owned models. No barrel files to remember, no schema to
-interpolate by hand.
+In that order. Outside-in is how persistence concerns end up in business rules.
 
 Two guards run at boot and refuse to start rather than fail quietly:
 
-- **Duplicate field names.** Two modules exporting the same query or mutation
-  would silently overwrite one another; instead the error names both modules.
-- **Account-deletion coverage.** Any model with a `user` field that is not in
-  some module's `ownedModels` means personal data would survive a delete. The
-  server will not boot until it is registered.
+- **Duplicate field names.** Two features exporting the same query or mutation
+  would silently overwrite one another; instead the error names both.
+- **Account-deletion coverage.** Any model with a `user` field that nothing
+  erases means personal data would survive a delete. The server will not boot
+  until a purger is registered in `container.ts`.
 
 ## Conventions
 
