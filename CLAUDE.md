@@ -46,6 +46,144 @@ Copy `.env_sample` to `.env` first. `MONGODB_URI` and `JWT_SECRET` are
 required and `src/config/env.ts` throws at boot without them — deliberately,
 so a misconfigured deploy never opens its port.
 
+## Architecture: clean / hexagonal
+
+Four layers. **Dependencies point INWARD only** — `domain` is the centre and
+knows nothing about anything else.
+
+```
+interfaces/  ->  application/  ->  domain/
+       \              |
+        `----->  infrastructure/  (implements the interfaces domain declares)
+```
+
+```
+src/
+  domain/              the business, with zero framework imports
+    shared/errors/       DomainError + the error codes the app branches on
+    auth/
+      entities/          User, Otp, TrustedDevice — rules live as methods
+      value-objects/     Email, Password, OtpCode, DeviceId — validate once,
+                         then the TYPE carries the proof
+      repositories/      INTERFACES only; infrastructure implements them
+
+  application/         use cases, orchestration, ports
+    auth/
+      ports/             Hasher, TokenService, MailService, Clock, RandomSource,
+                         AuthPolicy — what the inner layers need, not how
+      dto/               plain shapes crossing the boundary
+      services/          otp, device-trust, code-delivery — shared by use cases
+      use-cases/         one file per operation
+      index.ts           assembles the feature from injected dependencies
+
+  infrastructure/      the outside world
+    config/              env, auth policy, row caps
+    database/mongoose/   schemas, mappers, repository IMPLEMENTATIONS
+    security/            bcrypt hasher, JWT tokens, crypto randomness
+    mail/                Resend provider + templates
+    rate-limit/          in-memory bucket store
+    logging/
+
+  interfaces/          transports
+    graphql/             typedefs, resolvers, guards, schema builder, plugins
+    http/                express app and middleware
+
+  shared/utils/        pure helpers usable by any layer
+  container.ts         THE COMPOSITION ROOT — the only place concretes meet ports
+  main.ts              boot and graceful shutdown
+```
+
+### The rules, in order of importance
+
+1. **`domain/` imports nothing but itself.** No mongoose, no express, no
+   graphql, no jsonwebtoken, no bcrypt. If a change needs one of those in
+   `domain/`, the change is in the wrong layer.
+2. **`application/` depends on interfaces, never implementations.** A use case
+   takes a `UserRepository`, not `UserModel`. That is what lets it be tested
+   against a Map in twenty lines with no database.
+3. **`infrastructure/` and `interfaces/` are replaceable.** Swapping MongoDB
+   for Postgres, or GraphQL for REST, means writing new files in one of those
+   two folders and changing one line in `container.ts`.
+4. **`container.ts` is the only file that names both a port and its
+   implementation.** No DI container, no decorators, no reflection — explicit
+   wiring a small team can read top to bottom.
+
+### Adding a feature
+
+1. `domain/<feature>/` — entities, value objects, repository interfaces
+2. `application/<feature>/` — use cases, and an `index.ts` assembling them
+3. `infrastructure/database/mongoose/` — schema, mapper, repository impl
+4. `interfaces/graphql/<feature>/` — typedefs and resolvers
+5. `container.ts` — wire it, register its purger, add its feature to the schema
+
+Write the layers in that order. Going outside-in is how persistence concerns
+end up inside business rules.
+
+### Two boot guards — do not weaken either
+
+- **Duplicate field names** across GraphQL features throw at boot, naming both.
+- **`assertPurgeCoverage()`** walks every mongoose model with a `user` path and
+  refuses to boot if nothing in `container.ts` erases it on account deletion. A
+  model left out means personal health data survives a delete — a
+  data-protection failure, not an untidiness one.
+
+## Conventions
+
+- **Resolvers are wrapped, always.** `open` / `authed` / `verified` /
+  `adminOnly` from `interfaces/graphql/guards.ts`. The wrapper IS the auth
+  guard and the error handler, so no resolver needs a try/catch or a manual
+  check. Never read `context.caller` outside a wrapper.
+- **A resolver unwraps arguments, calls a use case, returns.** Nothing else. A
+  resolver containing an `if` about business rules is a use case in the wrong
+  file.
+- **Inner layers throw `DomainError`.** `interfaces/graphql/error-mapper.ts` is
+  the single place one becomes a transport response.
+- **Errors carry a code** from `domain/shared/errors/error-codes.ts`. The app
+  branches on the code, never the message.
+- **Validation happens once, in a value object.** `Email.create()` either
+  throws or hands back a proven address; nothing downstream re-checks.
+- **Patch operations use a field table, not a run of `if (x !== undefined)`.**
+  See `profile.use-cases.ts` — adding a field is one line and cannot skip
+  validation.
+- **Every list query is capped** via `infrastructure/config/limits.config.ts`.
+  When a cap is genuinely hit, add cursor pagination — do not raise it.
+- **Dates go through `shared/utils/datetime.ts`.** Never
+  `new Date().toISOString().slice(0, 10)` — that is the UTC day, not the
+  user's, and it misfiles anything logged after local midnight.
+- **Module system**: `"type": "module"` + NodeNext. Relative imports carry
+  explicit `.js` extensions even though the source is `.ts`.
+
+## Review standard
+
+Structural changes are reviewed against
+[.claude/skills/thermo-nuclear-code-quality-review](.claude/skills/thermo-nuclear-code-quality-review/SKILL.md).
+It is deliberately strict: it treats a file crossing 1000 lines, a new
+special-case branch in an existing flow, copy-pasted logic where a helper
+belongs, and feature logic in a shared path as design problems rather than
+nits, and it pushes for restructurings that delete complexity instead of
+relocating it.
+
+Run it before merging anything that adds a module or changes a boundary. It is
+`disable-model-invocation: true`, so it runs only when asked for by name.
+
+## Commands
+
+```bash
+npm run dev        # nodemon + tsx on src/server.ts, no build step
+npm run build      # tsc -> dist/
+npm start          # node dist/server.js (build first)
+npm run lint       # eslint src --ext .ts,.js
+npm run lint:fix
+npm run format     # prettier --write on src/**
+```
+
+No test runner is configured. `AUTH_DESIGN.md` section 18 is the manual pass
+until there is one.
+
+Copy `.env_sample` to `.env` first. `MONGODB_URI` and `JWT_SECRET` are
+required and `src/config/env.ts` throws at boot without them — deliberately,
+so a misconfigured deploy never opens its port.
+
 ## Architecture: modular monolith
 
 Every feature is ONE folder under `src/modules/` exporting ONE object.
