@@ -1,9 +1,10 @@
 import 'dotenv/config';
+import { appError, ErrorCode } from '../shared/errors.js';
 
 const required = (key: string): string => {
   const value = process.env[key];
   if (!value || value.trim() === '') {
-    throw new Error(`Missing required environment variable: ${key}`);
+    throw appError(ErrorCode.CONFIG_ERROR, `Missing required environment variable: ${key}`);
   }
   return value.trim();
 };
@@ -14,7 +15,9 @@ const number = (key: string, fallback: number): number => {
   const raw = process.env[key];
   if (!raw || raw.trim() === '') return fallback;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) throw new Error(`${key} must be a number, got: ${raw}`);
+  if (!Number.isFinite(parsed)) {
+    throw appError(ErrorCode.CONFIG_ERROR, `${key} must be a number, got: ${raw}`);
+  }
   return parsed;
 };
 
