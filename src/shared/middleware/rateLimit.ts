@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { Plugin } from 'graphql-yoga';
 import { createHash } from 'node:crypto';
-import { GraphQLError, getOperationAST, Kind } from 'graphql';
+import { GraphQLError, getOperationAST, Kind, type ArgumentNode, type ValueNode } from 'graphql';
 import { env } from '../../config/env.js';
 import { ErrorCode } from '../errors.js';
 import type { Context } from '../context.js';
@@ -92,7 +92,11 @@ type Rule = {
 //Anything not listed here falls through to the defaults below. CHECK THIS
 //TABLE before assuming a new mutation is unlimited.
 const RULES: Record<string, Rule> = {
-  signup: { keyBy: 'ip', budgets: [{ windowMs: 10 * MINUTE, max: 3 }, { windowMs: DAY, max: 10 }] },
+  //There is no email to fall back on for signup, so this is keyed on the IP
+  //alone and has to be generous: one carrier address in Burundi can front
+  //thousands of subscribers, and a tight cap here reads to them as "the app is
+  //broken" rather than "the network is busy".
+  signup: { keyBy: 'ip', budgets: [{ windowMs: 10 * MINUTE, max: 20 }, { windowMs: DAY, max: 200 }] },
   login: { keyBy: 'ip+email', budgets: [{ windowMs: MINUTE, max: 5 }, { windowMs: HOUR, max: 30 }] },
 
   verifyEmailOtp: { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 5 }, { windowMs: HOUR, max: 20 }] },
@@ -104,7 +108,9 @@ const RULES: Record<string, Rule> = {
   requestPasswordReset: { keyBy: 'ip+email', budgets: [{ windowMs: MINUTE, max: 1 }, { windowMs: HOUR, max: 3 }] },
   resendPasswordResetOtp: { keyBy: 'ip+email', budgets: [{ windowMs: MINUTE, max: 1 }, { windowMs: HOUR, max: 3 }] },
 
-  resetPassword: { keyBy: 'ip', budgets: [{ windowMs: 10 * MINUTE, max: 5 }, { windowMs: HOUR, max: 10 }] },
+  //Already gated by a reset ticket, so this caps abuse rather than guessing —
+  //and shares the CGNAT problem above.
+  resetPassword: { keyBy: 'ip', budgets: [{ windowMs: 10 * MINUTE, max: 20 }, { windowMs: HOUR, max: 60 }] },
   changePassword: { keyBy: 'user', budgets: [{ windowMs: 10 * MINUTE, max: 5 }, { windowMs: HOUR, max: 20 }] },
   deleteAccount: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 5 }] },
 };
@@ -112,15 +118,57 @@ const RULES: Record<string, Rule> = {
 const DEFAULT_READ: Rule = { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 120 }] };
 const DEFAULT_WRITE: Rule = { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 60 }] };
 
-//Pulls the email out of the arguments so a budget can be tied to it. Only
-//literal values are readable here; a caller using variables falls back to the
-//IP key, which still applies.
-const emailFromArgs = (args: readonly unknown[]): string | undefined => {
-  for (const argument of args as { name?: { value: string }; value?: { kind?: string; value?: string } }[]) {
-    if (argument.name?.value !== 'email') continue;
-    if (argument.value?.kind === Kind.STRING && argument.value.value) {
-      return argument.value.value.trim().toLowerCase();
+//Pulls the TARGET EMAIL out of an operation, so a budget can be tied to the
+//account rather than only to the source address.
+//
+//THERE ARE THREE SHAPES TO HANDLE, and missing one fails silently:
+//
+//  login(input: $input)             the whole input object as a variable
+//  resendLoginOtp(email: $email)    a bare variable
+//  resendLoginOtp(email: "a@b.com") a literal, which only curl ever sends
+//
+//This read literals only, which is the shape the app NEVER sends — Apollo
+//Client always uses variables, and `login` nests email inside an input object
+//on top of that. So every `ip+email` rule quietly collapsed into a per-IP one.
+//That is not just a weaker account cap: on a carrier that puts thousands of
+//subscribers behind one address, it means real users locking each other out.
+const asEmail = (candidate: unknown): string | undefined =>
+  typeof candidate === 'string' && candidate.trim() ? candidate.trim().toLowerCase() : undefined;
+
+const readEmail = (value: ValueNode | undefined, variables: Record<string, unknown>): string | undefined => {
+  if (!value) return undefined;
+
+  switch (value.kind) {
+    case Kind.STRING:
+      return asEmail(value.value);
+
+    case Kind.VARIABLE: {
+      const supplied = variables[value.name.value];
+      //`email: $email` hands back a string; `input: $input` hands back the
+      //whole object, so try the field inside it too.
+      return asEmail(supplied) ?? asEmail((supplied as { email?: unknown } | null)?.email);
     }
+
+    case Kind.OBJECT: {
+      for (const field of value.fields) {
+        if (field.name.value === 'email') return readEmail(field.value, variables);
+      }
+      return undefined;
+    }
+
+    default:
+      return undefined;
+  }
+};
+
+const emailFromArgs = (
+  args: readonly ArgumentNode[],
+  variables: Record<string, unknown>
+): string | undefined => {
+  for (const argument of args) {
+    if (argument.name.value !== 'email' && argument.name.value !== 'input') continue;
+    const found = readEmail(argument.value, variables);
+    if (found) return found;
   }
   return undefined;
 };
@@ -138,7 +186,10 @@ export const operationLimitPlugin: Plugin<Context> = {
 
       const field = selection.name.value;
       const rule = RULES[field] ?? (isMutation ? DEFAULT_WRITE : DEFAULT_READ);
-      const email = emailFromArgs(selection.arguments ?? []);
+      const email = emailFromArgs(
+        selection.arguments ?? [],
+        (args.variableValues ?? {}) as Record<string, unknown>
+      );
       const userId = context.user ? String(context.user._id) : undefined;
 
       //Falls back to IP whenever there is no user, so an unauthenticated
