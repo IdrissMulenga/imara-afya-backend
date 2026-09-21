@@ -52,15 +52,27 @@ export const verifyToken = (token: string): SessionClaims => {
   }
 };
 
-export const signResetToken = (userId: string): string =>
-  jwt.sign({ purpose: 'PASSWORD_RESET' }, env.JWT_SECRET, {
+//`v` is the user's tokenVersion at the moment the ticket was issued.
+//resetPassword bumps that number, so the ticket it just spent stops matching —
+//which is what makes a reset ticket single-use.
+//
+//WITHOUT IT the same ticket kept working for its full 15 minutes, so anyone who
+//captured one out of a log or a crash report could set another password AFTER
+//the real owner had already recovered the account.
+export const signResetToken = (userId: string, tokenVersion: number): string =>
+  jwt.sign({ purpose: 'PASSWORD_RESET', v: tokenVersion }, env.JWT_SECRET, {
     algorithm: ALGORITHM,
     issuer: env.JWT_ISSUER,
     subject: userId,
     expiresIn: `${env.RESET_TOKEN_MINUTES}m`,
   });
 
-export const verifyResetToken = (token: string): string => {
+export interface ResetClaims {
+  userId: string;
+  tokenVersion: number;
+}
+
+export const verifyResetToken = (token: string): ResetClaims => {
   try {
     const payload = jwt.verify(token, env.JWT_SECRET, {
       algorithms: [ALGORITHM],
@@ -69,11 +81,11 @@ export const verifyResetToken = (token: string): string => {
 
     //THIS CHECK IS THE WHOLE REASON RESET TOKENS ARE SEPARATE. Without it any
     //valid session token would be permission to set a new password.
-    if (payload.purpose !== 'PASSWORD_RESET' || !payload.sub) {
+    if (payload.purpose !== 'PASSWORD_RESET' || !payload.sub || typeof payload.v !== 'number') {
       throw appError(ErrorCode.INVALID_RESET_TOKEN, 'That reset link is not valid.');
     }
 
-    return payload.sub;
+    return { userId: payload.sub, tokenVersion: payload.v };
   } catch {
     throw appError(ErrorCode.INVALID_RESET_TOKEN, 'That reset request has expired. Please start again.');
   }

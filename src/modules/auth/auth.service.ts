@@ -226,7 +226,7 @@ export const verifyPasswordResetOtp = async (email: string, code: string): Promi
   await verifyCode({ userId: user._id, purpose: 'RESET', code });
 
   return {
-    resetToken: signResetToken(String(user._id)),
+    resetToken: signResetToken(String(user._id), user.tokenVersion),
     expiresAt: minutesFromNow(env.RESET_TOKEN_MINUTES),
   };
 };
@@ -238,8 +238,18 @@ export const resetPassword = async (input: ResetPasswordInput): Promise<AuthPayl
 
   //Rejects a session token presented here — the ticket carries a purpose claim
   //that this checks.
-  const userId = verifyResetToken(input.resetToken);
-  const user = await findUserOrThrow(userId);
+  const ticket = verifyResetToken(input.resetToken);
+  const user = await findUserOrThrow(ticket.userId);
+
+  //SINGLE USE. The tokenVersion bump further down moves the account on, so a
+  //ticket that has already succeeded no longer matches. A replay inside the
+  //15-minute window lands here instead of setting a second new password.
+  if (ticket.tokenVersion !== user.tokenVersion) {
+    throw appError(
+      ErrorCode.INVALID_RESET_TOKEN,
+      'That reset request has already been used. Please start again.'
+    );
+  }
 
   if (await bcrypt.compare(input.password, user.passwordHash)) {
     throw appError(ErrorCode.PASSWORD_UNCHANGED, 'That is your current password. Please choose a different one.');

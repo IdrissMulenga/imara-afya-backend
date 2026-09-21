@@ -74,6 +74,9 @@ export const sendCode = async (params: {
 
   const code = generateCode();
   const expiresAt = minutesFromNow(env.OTP_TTL_MINUTES);
+  //Kept two hours past the code's death so the hourly count in checkCanIssue
+  //has a full hour of history to read. See the note in otp.model.ts.
+  const purgeAt = minutesFromNow(env.OTP_TTL_MINUTES + 120);
 
   await Otp.create({
     user: params.user._id,
@@ -82,6 +85,7 @@ export const sendCode = async (params: {
     channel: 'EMAIL',
     deviceId: params.deviceId ?? null,
     expiresAt,
+    purgeAt,
     ip: params.ip,
   });
 
@@ -131,38 +135,61 @@ export const verifyCode = async (params: {
   //The TTL index sweeps about once a minute, so a row can outlive its own
   //expiry. Expiry is enforced HERE; the index is just housekeeping.
   if (otp.expiresAt.getTime() <= Date.now()) {
-    otp.consumedAt = new Date();
-    await otp.save();
+    await Otp.updateOne({ _id: otp._id }, { $set: { consumedAt: new Date() } });
     throw appError(ErrorCode.OTP_EXPIRED, 'That code has expired. Please ask for a new one.');
   }
 
   if (otp.attempts >= env.OTP_MAX_ATTEMPTS) {
-    otp.consumedAt = new Date();
-    await otp.save();
+    await Otp.updateOne({ _id: otp._id }, { $set: { consumedAt: new Date() } });
     throw appError(ErrorCode.OTP_ATTEMPTS_EXCEEDED, 'Too many incorrect attempts. Please ask for a new code.');
   }
 
   if (!(await bcrypt.compare(submitted, otp.codeHash))) {
-    otp.attempts += 1;
+    //COUNTED IN THE DATABASE, not in memory.
+    //
+    //`otp.attempts += 1; await otp.save()` is a read-then-write, and guesses
+    //that arrive together all read the same number and all write the same
+    //number back. Ten parallel requests cost one attempt, so the five-attempt
+    //cap could be walked straight past by anyone sending requests in parallel.
+    //A single $inc cannot be raced.
+    const counted = await Otp.findOneAndUpdate(
+      { _id: otp._id },
+      { $inc: { attempts: 1 } },
+      { new: true, projection: { attempts: 1 } }
+    ).lean();
+
+    const attempts = counted?.attempts ?? otp.attempts + 1;
 
     //Spending the last attempt kills the code now, so the user is told plainly
     //that it is finished instead of getting "incorrect" on a code that can no
     //longer succeed.
-    const exhausted = otp.attempts >= env.OTP_MAX_ATTEMPTS;
-    if (exhausted) otp.consumedAt = new Date();
-    await otp.save();
+    const exhausted = attempts >= env.OTP_MAX_ATTEMPTS;
+    if (exhausted) {
+      await Otp.updateOne({ _id: otp._id }, { $set: { consumedAt: new Date() } });
+    }
 
     throw appError(
       exhausted ? ErrorCode.OTP_ATTEMPTS_EXCEEDED : ErrorCode.OTP_INCORRECT,
       exhausted ? 'Too many incorrect attempts. Please ask for a new code.' : 'That code is not right.',
-      { attemptsLeft: Math.max(0, env.OTP_MAX_ATTEMPTS - otp.attempts) }
+      { attemptsLeft: Math.max(0, env.OTP_MAX_ATTEMPTS - attempts) }
     );
   }
 
-  //Used up the moment it works. Replaying the same six digits finds it
-  //consumed and falls through to OTP_NOT_FOUND.
-  otp.consumedAt = new Date();
-  await otp.save();
+  //Used up the moment it works. Replaying the same six digits finds it consumed
+  //and falls through to OTP_NOT_FOUND.
+  //
+  //`consumedAt: null` in the FILTER makes this a claim rather than an
+  //overwrite: if two requests race with the correct code, exactly one of them
+  //wins the row and the loser is told the code is spent.
+  const claimed = await Otp.findOneAndUpdate(
+    { _id: otp._id, consumedAt: null },
+    { $set: { consumedAt: new Date() } },
+    { projection: { deviceId: 1 } }
+  ).lean();
 
-  return { deviceId: otp.deviceId };
+  if (!claimed) {
+    throw appError(ErrorCode.OTP_NOT_FOUND, 'That code is no longer valid. Please ask for a new one.');
+  }
+
+  return { deviceId: claimed.deviceId };
 };

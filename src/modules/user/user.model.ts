@@ -43,7 +43,9 @@ export interface IUser extends Document {
 
 const userSchema = new Schema<IUser>(
   {
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
+    //`unique` already builds the index. Adding `index: true` as well makes
+    //Mongoose log a duplicate-index warning on every single boot.
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
 
     emailVerified: { type: Boolean, default: false },

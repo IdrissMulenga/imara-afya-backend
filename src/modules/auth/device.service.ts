@@ -10,7 +10,26 @@ import { daysFromNow } from '../../shared/datetime.js';
 //Decides whether a phone has to type a code. See device.model.ts for why this
 //is NOT a security factor.
 
-const MAX_DEVICES = 50;
+//ENFORCED in trustDevice below, not just applied as a `.limit()` on the list.
+//It used to be the limit alone, which meant rows grew without bound and the
+//user could not revoke a phone the list was quietly hiding from them.
+const MAX_DEVICES = 20;
+
+//Keeps the most recently seen MAX_DEVICES rows and drops the rest.
+//
+//Nothing is lost by evicting: a dropped phone simply types a code the next time
+//it signs in, which is the ordinary path for a device we do not recognise.
+const evictBeyondCap = async (userId: Types.ObjectId): Promise<void> => {
+  const surplus = await Device.find({ user: userId })
+    .sort({ lastSeenAt: -1 })
+    .skip(MAX_DEVICES)
+    .select({ _id: 1 })
+    .lean();
+
+  if (surplus.length === 0) return;
+
+  await Device.deleteMany({ _id: { $in: surplus.map((device) => device._id) } });
+};
 
 export const isDeviceTrusted = async (userId: Types.ObjectId, deviceId: string): Promise<boolean> => {
   const device = await Device.findOne({ user: userId, deviceId }).lean();
@@ -21,11 +40,7 @@ export const isDeviceTrusted = async (userId: Types.ObjectId, deviceId: string):
 
 //Update-or-insert, so logging in twice from the same phone refreshes the
 //window instead of creating a second row.
-export const trustDevice = async (params: {
-  userId: Types.ObjectId;
-  deviceId: string;
-  label?: string;
-}): Promise<void> => {
+export const trustDevice = async (params: { userId: Types.ObjectId; deviceId: string; label?: string }): Promise<void> => {
   const label = params.label ? cleanText(params.label, 80, 'Device name') || 'Unknown device' : 'Unknown device';
 
   await Device.updateOne(
@@ -36,6 +51,8 @@ export const trustDevice = async (params: {
     },
     { upsert: true }
   );
+
+  await evictBeyondCap(params.userId);
 };
 
 //Called on a login that did not need a code, so a phone in weekly use never
