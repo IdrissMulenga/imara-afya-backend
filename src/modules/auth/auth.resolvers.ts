@@ -158,9 +158,17 @@ export const authResolvers = {
     refreshSession: async (_p: unknown, _a: unknown, context: Context) => {
       const caller = requireAuth(context);
       try {
-        //The app sends back the origin it was given, so we know when the
-        //password was actually last typed.
-        const origin = context.req.get('x-session-origin') ?? new Date().toISOString();
+        //FROM THE SIGNED TOKEN, never from a header.
+        //
+        //This used to read `x-session-origin` off the request, which meant the
+        //caller decided how old their own session was. Sending today's date on
+        //every refresh kept a session alive forever, and a client that simply
+        //omitted the header got the same effect by accident — the absolute cap
+        //in MAX_SESSION_DAYS did nothing at all.
+        const origin = context.sessionOrigin;
+        if (!origin) {
+          throw appError(ErrorCode.SESSION_EXPIRED, 'Please sign in again to continue.');
+        }
         return await authService.refreshSession(String(caller._id), origin);
       } catch (error) {
         throw handleError(error, 'refreshSession');

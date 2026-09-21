@@ -13,12 +13,19 @@ import { appError, ErrorCode } from '../errors.js';
 //revoked token as "not signed in" would show the user a login screen with no
 //explanation of why.
 
-export const getUserFromRequest = async (req: Request): Promise<IUser | undefined> => {
+export interface CallerIdentity {
+  user?: IUser;
+  //Straight off the verified token. See shared/context.ts for why this must
+  //never come from a request header.
+  sessionOrigin?: string;
+}
+
+export const getUserFromRequest = async (req: Request): Promise<CallerIdentity> => {
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return undefined;
+  if (!header?.startsWith('Bearer ')) return {};
 
   const token = header.slice(7).trim();
-  if (!token) return undefined;
+  if (!token) return {};
 
   const claims = verifyToken(token);
   const user = await User.findById(claims.userId);
@@ -34,5 +41,5 @@ export const getUserFromRequest = async (req: Request): Promise<IUser | undefine
     throw appError(ErrorCode.TOKEN_REVOKED, 'You have been signed out. Please sign in again.');
   }
 
-  return user;
+  return { user, sessionOrigin: claims.origin };
 };
