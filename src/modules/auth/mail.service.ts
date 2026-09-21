@@ -1,3 +1,4 @@
+import { GraphQLError } from 'graphql';
 import { env } from '../../config/env.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import type { OtpPurpose } from './otp.model.js';
@@ -126,7 +127,15 @@ export const sendOtpEmail = async (params: {
 
     console.log(`[mail] sent ${params.purpose} code to ${maskEmail(params.to)}`);
   } catch (error) {
-    if (error instanceof Error && error.name === 'GraphQLError') throw error;
+    //The `!response.ok` branch above already threw a proper GraphQLError with
+    //its code. Re-throw it untouched rather than wrapping it a second time.
+    //
+    //`instanceof`, not a check on error.name — a string comparison would break
+    //silently if another library ever used that name.
+    if (error instanceof GraphQLError) throw error;
+
+    //Anything else here is a network failure, a DNS error or the abort from
+    //the timeout above. Log the real reason, tell the caller something useful.
     console.error('[mail] request failed:', error);
     throw appError(ErrorCode.OTP_SEND_FAILED, 'We could not send your code right now. Please try again shortly.');
   } finally {
