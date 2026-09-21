@@ -1,11 +1,12 @@
 import bcrypt from 'bcryptjs';
 import { randomInt } from 'node:crypto';
 import type { Types } from 'mongoose';
-import { Otp, type IUser, type OtpPurpose } from '../models/index.js';
-import { env } from '../config/env.js';
-import { appError, ErrorCode } from '../utils/errors.js';
-import { checkOtpCode } from '../utils/validation.js';
-import { minutesFromNow, secondsSince } from '../utils/datetime.js';
+import { Otp, type OtpPurpose } from './otp.model.js';
+import type { IUser } from '../user/user.model.js';
+import { env } from '../../config/env.js';
+import { appError, ErrorCode } from '../../shared/errors.js';
+import { checkOtpCode } from '../../shared/validation.js';
+import { minutesFromNow, secondsSince } from '../../shared/datetime.js';
 import { sendOtpEmail } from './mail.service.js';
 
 //ONE-TIME CODES: create, send, verify.

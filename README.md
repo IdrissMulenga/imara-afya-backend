@@ -25,34 +25,38 @@ sent traffic.
 
 ## Structure
 
-A plain layered monolith — files grouped by what they are.
+A modular monolith — one process, but the code is grouped by feature.
 
 ```
 src/
   config/      env.ts, db.ts
-  models/      mongoose schemas, used directly by services
-  types/       Context and every input/output shape
-  utils/       errors, validation, datetime
-  services/    all the business logic
-  middleware/  auth, rate limiting, security headers
-  graphql/     typeDefs/ and resolvers/, one file per feature
-  app.ts       the express pipeline
-  server.ts    boot and graceful shutdown
+  shared/      context, auth guard, errors, validation, datetime, middleware
+  modules/
+    index.ts   collects every module's typeDefs and resolvers
+    user/      model, types, service, typeDefs, resolvers, index
+    auth/      models, services, types, typeDefs, resolvers, index
+  schema.ts
+  app.ts
+  server.ts
 ```
 
-Services hold the logic and import models directly. Resolvers read arguments,
-call a service, and return — nothing else.
+Everything about a feature is in one folder. Each module's `index.ts` exports
+`typeDefs` and `resolvers`; `modules/index.ts` merges them into one schema
+using `extend type Query`, so modules never clash.
+
+Services hold the logic and use their models directly. Resolvers read
+arguments, call a service, and return — nothing else.
 
 ## Adding a feature
 
-1. `models/<name>.model.ts` + export it from `models/index.ts`
-2. `types/index.ts` — the input shapes
-3. `services/<name>.service.ts` — the logic
-4. `graphql/typeDefs/<name>.ts` + add to `typeDefs/index.ts`
-5. `graphql/resolvers/<name>.ts` + add to `resolvers/index.ts`
-6. **`services/user.service.ts` — add the model to `USER_OWNED`**
+1. Create `src/modules/<name>/`
+2. `<name>.model.ts`, `<name>.types.ts`, `<name>.service.ts`,
+   `<name>.typeDefs.ts`, `<name>.resolvers.ts`
+3. `<name>/index.ts` — export `typeDefs` and `resolvers`
+4. `modules/index.ts` — import it, add it to the array
+5. **`modules/user/user.service.ts` — add the model to `USER_OWNED`**
 
-Step 6 is the easy one to forget. A model with a `user` field that is not in
+Step 5 is the easy one to forget. A model with a `user` field that is not in
 that list means health data survives an account deletion.
 
 ## Conventions

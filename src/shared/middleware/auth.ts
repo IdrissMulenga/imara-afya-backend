@@ -1,7 +1,7 @@
 import type { Request } from 'express';
-import { User, type IUser } from '../models/index.js';
-import { verifyToken } from '../services/token.service.js';
-import { appError, ErrorCode } from '../utils/errors.js';
+import { User, type IUser } from '../../modules/user/user.model.js';
+import { verifyToken } from '../../modules/auth/token.service.js';
+import { appError, ErrorCode } from '../errors.js';
 
 //WHO IS CALLING.
 //

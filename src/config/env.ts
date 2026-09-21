@@ -1,13 +1,5 @@
 import 'dotenv/config';
 
-//ENVIRONMENT VARIABLES.
-//
-//Read once, here. Nothing else in the app touches process.env — so if a name
-//is wrong, it is wrong in one place and easy to find.
-//
-//`required()` throws, which means a missing MONGODB_URI stops the server at
-//boot instead of failing on the first user who tries to log in.
-
 const required = (key: string): string => {
   const value = process.env[key];
   if (!value || value.trim() === '') {
