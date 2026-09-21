@@ -34,6 +34,11 @@ export const ErrorCode = {
   DEVICE_NOT_FOUND: 'DEVICE_NOT_FOUND',
   INVALID_DEVICE_ID: 'INVALID_DEVICE_ID',
 
+  //Boot-time only — the server exits before it can answer a request, so the
+  //app never receives this one. It is here so config failures carry a code
+  //like everything else.
+  CONFIG_ERROR: 'CONFIG_ERROR',
+
   BAD_USER_INPUT: 'BAD_USER_INPUT',
   NOT_FOUND: 'NOT_FOUND',
   RATE_LIMITED: 'RATE_LIMITED',
