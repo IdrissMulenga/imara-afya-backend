@@ -11,14 +11,39 @@ const required = (key: string): string => {
 
 const optional = (key: string, fallback = ''): string => (process.env[key] ?? fallback).trim();
 
-const number = (key: string, fallback: number): number => {
+//`min` defaults to 1. Every number below is a count, a size or a duration, and
+//a zero or negative one fails later in a way that looks like a code bug rather
+//than a typo in .env — OTP_MAX_ATTEMPTS=0 would lock out every user in the
+//country and log nothing at all.
+const number = (key: string, fallback: number, min = 1): number => {
   const raw = process.env[key];
   if (!raw || raw.trim() === '') return fallback;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) {
     throw appError(ErrorCode.CONFIG_ERROR, `${key} must be a number, got: ${raw}`);
   }
+  if (parsed < min) {
+    throw appError(ErrorCode.CONFIG_ERROR, `${key} must be at least ${min}, got: ${parsed}`);
+  }
   return parsed;
+};
+
+//HS256 IS ONLY AS STRONG AS THIS STRING. A short secret can be brute-forced
+//offline, and whoever recovers it can mint a valid token for any account —
+//which walks past every other control in this codebase. 32 characters is the
+//floor; `openssl rand -base64 48` produces a good one.
+const JWT_SECRET_MIN = 32;
+
+const secret = (key: string): string => {
+  const value = required(key);
+  if (value.length < JWT_SECRET_MIN) {
+    throw appError(
+      ErrorCode.CONFIG_ERROR,
+      `${key} must be at least ${JWT_SECRET_MIN} characters (got ${value.length}). ` +
+        'Generate one with: openssl rand -base64 48'
+    );
+  }
+  return value;
 };
 
 const NODE_ENV = optional('NODE_ENV', 'development');
@@ -31,7 +56,7 @@ export const env = {
   MONGODB_URI: required('MONGODB_URI'),
   DB_POOL_SIZE: number('DB_POOL_SIZE', 10),
 
-  JWT_SECRET: required('JWT_SECRET'),
+  JWT_SECRET: secret('JWT_SECRET'),
   JWT_ISSUER: optional('JWT_ISSUER', 'imara-afya'),
   SESSION_DAYS: number('SESSION_DAYS', 7),
   MAX_SESSION_DAYS: number('MAX_SESSION_DAYS', 30),
@@ -48,7 +73,11 @@ export const env = {
   //wrong once a web build exists.
   FRONTEND_URL: optional('FRONTEND_URL'),
   RATE_LIMIT_WINDOW_MS: number('RATE_LIMIT_WINDOW_MS', 60_000),
-  RATE_LIMIT_MAX: number('RATE_LIMIT_MAX', 120),
+  //Per IP, and in Burundi a single carrier address can front thousands of
+  //subscribers (CGNAT), so this is deliberately generous. It is a backstop
+  //against one hostile client; the limits that matter are per-field and
+  //per-account in shared/middleware/rateLimit.ts.
+  RATE_LIMIT_MAX: number('RATE_LIMIT_MAX', 600),
   MAX_QUERY_DEPTH: number('MAX_QUERY_DEPTH', 10),
 
   RESEND_API_KEY: optional('RESEND_API_KEY'),
@@ -56,14 +85,34 @@ export const env = {
   MAIL_REPLY_TO: optional('MAIL_REPLY_TO'),
 } as const;
 
-//Configurations that work but should not reach production. Warned at boot
-//rather than thrown, because each is legitimate in development.
+//SETTINGS THAT MUST NOT REACH PRODUCTION AT ALL. Thrown rather than warned — a
+//warning in a log nobody reads is exactly how a wide-open CORS policy ships.
+if (env.IS_PRODUCTION) {
+  if (!env.FRONTEND_URL) {
+    throw appError(
+      ErrorCode.CONFIG_ERROR,
+      'FRONTEND_URL must be set in production — leaving it empty allows requests from ANY origin.'
+    );
+  }
+  if (!env.RESEND_API_KEY) {
+    throw appError(
+      ErrorCode.CONFIG_ERROR,
+      'RESEND_API_KEY must be set in production — without it no user can receive a code.'
+    );
+  }
+}
+
+//Configurations that work but are worth saying out loud. Warned rather than
+//thrown, because each is legitimate in development.
 export const envWarnings = (): string[] => {
   const warnings: string[] = [];
   if (!env.FRONTEND_URL) warnings.push('FRONTEND_URL is unset — CORS allows ANY origin.');
   if (!env.RESEND_API_KEY) warnings.push('RESEND_API_KEY is unset — codes are logged, not emailed.');
   if (env.MAIL_FROM.endsWith('@resend.dev')) {
-    warnings.push('MAIL_FROM is the Resend test sender — mail reaches only your own address.');
+    warnings.push(
+      'MAIL_FROM is the Resend test sender — mail reaches ONLY your own Resend address. ' +
+        'Signup and new-device login work for nobody else until a domain is verified.'
+    );
   }
   return warnings;
 };
