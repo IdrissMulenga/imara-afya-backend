@@ -23,42 +23,37 @@ Health check: `GET /health` — 200 when the database is reachable, 503 when it
 is not, so a container that is up but cannot serve gets replaced rather than
 sent traffic.
 
-## Layout
+## Structure
 
-Clean architecture. Dependencies point inward; `domain/` is the centre.
+A plain layered monolith — files grouped by what they are.
 
 ```
 src/
-  domain/          entities, value objects, repository interfaces — no frameworks
-  application/     use cases and the ports they depend on
-  infrastructure/  mongoose, Resend, JWT, bcrypt, logging, config
-  interfaces/      GraphQL and HTTP
-  shared/utils/    pure helpers
-  container.ts     composition root — the only place concretes meet ports
-  main.ts          boot and graceful shutdown
+  config/      env.ts, db.ts
+  models/      mongoose schemas, used directly by services
+  types/       Context and every input/output shape
+  utils/       errors, validation, datetime
+  services/    all the business logic
+  middleware/  auth, rate limiting, security headers
+  graphql/     typeDefs/ and resolvers/, one file per feature
+  app.ts       the express pipeline
+  server.ts    boot and graceful shutdown
 ```
 
-The payoff: a use case can be exercised with no database and no mail provider,
-and replacing MongoDB or GraphQL means new files in one outer folder plus one
-line in `container.ts`.
+Services hold the logic and import models directly. Resolvers read arguments,
+call a service, and return — nothing else.
 
 ## Adding a feature
 
-1. `domain/<feature>/` — entities, value objects, repository interfaces
-2. `application/<feature>/` — use cases and an `index.ts` assembling them
-3. `infrastructure/database/mongoose/` — schema, mapper, repository impl
-4. `interfaces/graphql/<feature>/` — typedefs and resolvers
-5. `container.ts` — wire it, register its purger, add it to the schema
+1. `models/<name>.model.ts` + export it from `models/index.ts`
+2. `types/index.ts` — the input shapes
+3. `services/<name>.service.ts` — the logic
+4. `graphql/typeDefs/<name>.ts` + add to `typeDefs/index.ts`
+5. `graphql/resolvers/<name>.ts` + add to `resolvers/index.ts`
+6. **`services/user.service.ts` — add the model to `USER_OWNED`**
 
-In that order. Outside-in is how persistence concerns end up in business rules.
-
-Two guards run at boot and refuse to start rather than fail quietly:
-
-- **Duplicate field names.** Two features exporting the same query or mutation
-  would silently overwrite one another; instead the error names both.
-- **Account-deletion coverage.** Any model with a `user` field that nothing
-  erases means personal data would survive a delete. The server will not boot
-  until a purger is registered in `container.ts`.
+Step 6 is the easy one to forget. A model with a `user` field that is not in
+that list means health data survives an account deletion.
 
 ## Conventions
 
