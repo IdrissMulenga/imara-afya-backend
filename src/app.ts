@@ -1,6 +1,8 @@
 import express, { type Express, type Request, type Response, type RequestHandler } from 'express';
 import cors from 'cors';
 import { createYoga } from 'graphql-yoga';
+import { GraphQLError } from 'graphql';
+import { appError, ErrorCode } from './shared/errors.js';
 import { env } from './config/env.js';
 import { isDBReady } from './config/db.js';
 import { schema } from './schema.js';
@@ -39,9 +41,10 @@ export const createApp = (): Express => {
     cors({
       origin: env.FRONTEND_URL ? env.FRONTEND_URL.split(',').map((o) => o.trim()) : true,
       credentials: true,
-      //The app sends its device id and session origin as headers rather than
-      //as arguments on every single operation.
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'x-session-origin'],
+      //The app sends its device id as a header rather than as an argument on
+      //every operation. THE SESSION ORIGIN IS NOT A HEADER — it is read from
+      //the signed token, see shared/context.ts.
+      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id'],
     })
   );
 
@@ -78,11 +81,23 @@ export const createApp = (): Express => {
     plugins: [securityPlugin, operationLimitPlugin],
 
     //Runs once per request, before any resolver.
-    context: async ({ req }): Promise<Context> => ({
-      user: await getUserFromRequest(req),
-      ip: req.ip ?? 'unknown',
-      req,
-    }),
+    //
+    //WRAPPED because this runs OUTSIDE every resolver's handleError. With
+    //maskedErrors off, an unexpected failure here — Mongo unreachable, say —
+    //would otherwise travel to the client with its stack attached.
+    context: async ({ req }): Promise<Context> => {
+      const ip = req.ip ?? 'unknown';
+
+      try {
+        const caller = await getUserFromRequest(req);
+        return { user: caller.user, sessionOrigin: caller.sessionOrigin, ip, req };
+      } catch (error) {
+        //Ours already carry a safe message and a code, so they pass through.
+        if (error instanceof GraphQLError) throw error;
+        console.error('[context] could not identify caller:', error);
+        throw appError(ErrorCode.INTERNAL, 'Something went wrong. Please try again.');
+      }
+    },
   });
 
   //Yoga is a fetch handler, not an express one. The cast is the documented way
