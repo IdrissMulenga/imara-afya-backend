@@ -10,7 +10,7 @@ GraphQL (graphql-yoga), Mongoose. One process, one database, deployed as a
 single instance.
 
 Read [AUTH_DESIGN.md](AUTH_DESIGN.md) before touching anything in
-`services/auth.service.ts` or `services/otp.service.ts` — it is the
+`modules/auth/auth.service.ts` or `modules/auth/otp.service.ts` — it is the
 specification this code implements, down to the error codes.
 
 ## Commands
@@ -32,70 +32,93 @@ misconfigured deploy never opens its port.
 
 ## Structure
 
-A plain layered monolith. Files are grouped by what they are, and each layer
-calls the one below it.
+A modular monolith. One process, one database — but the code is grouped by
+FEATURE, not by file type. Everything about a feature lives in one folder.
 
 ```
 src/
   config/
-    env.ts          every environment variable, read and checked once
-    db.ts           mongoose connection, disconnect, health check
-  models/
-    user.model.ts   mongoose schemas — used DIRECTLY by services
-    otp.model.ts
-    device.model.ts
-    index.ts        one import line for all three
-  types/
-    index.ts        Context, all the Input shapes, all the return shapes
-  utils/
-    errors.ts       ErrorCode list, appError(), handleError()
-    validation.ts   normalizeEmail, checkPassword, maskEmail, ...
-    datetime.ts     dayInZone, addDays, streakLength, ...
-  services/         ALL THE BUSINESS LOGIC lives here
-    auth.service.ts   signup, login, reset, change password, refresh, logout
-    otp.service.ts    create / send / verify one-time codes
-    device.service.ts trust, touch, list, revoke
-    mail.service.ts   Resend, and the email copy
-    token.service.ts  sign and verify JWTs
-    user.service.ts   profile, preferences, delete account
-  middleware/
-    auth.ts         turns a bearer token into context.user
-    rateLimit.ts    per-IP middleware + per-operation yoga plugin
-    security.ts     security headers + query depth limit
-  graphql/
-    typeDefs/       the SDL, one file per feature + index
-    resolvers/      the resolvers, one file per feature + index
-    schema.ts       ties typeDefs and resolvers together
-  app.ts            the express pipeline
-  server.ts         boot, listen, graceful shutdown
+    env.ts              every environment variable, read and checked once
+    db.ts               mongoose connection, disconnect, health check
+
+  shared/               used by more than one module
+    context.ts          the Context every resolver receives
+    auth-guard.ts       requireAuth(context)
+    errors.ts           ErrorCode list, appError(), handleError()
+    validation.ts       normalizeEmail, checkPassword, maskEmail, ...
+    datetime.ts         dayInZone, addDays, streakLength, ...
+    middleware/
+      auth.ts           turns a bearer token into context.user
+      rateLimit.ts      per-IP middleware + per-operation yoga plugin
+      security.ts       security headers + query depth limit
+
+  modules/
+    index.ts            collects typeDefs and resolvers from every module
+    user/
+      user.model.ts     the mongoose schema
+      user.types.ts     the input shapes this module accepts
+      user.service.ts   profile, preferences, delete account
+      user.typeDefs.ts  the User type and its queries/mutations
+      user.resolvers.ts
+      index.ts          exports typeDefs, resolvers, and the User model
+    auth/
+      otp.model.ts
+      device.model.ts
+      auth.types.ts
+      token.service.ts  sign and verify JWTs
+      mail.service.ts   Resend, and the email copy
+      otp.service.ts    create / send / verify one-time codes
+      device.service.ts trust, touch, list, revoke
+      auth.service.ts   signup, login, reset, change password, refresh, logout
+      auth.typeDefs.ts
+      auth.resolvers.ts
+      index.ts
+
+  schema.ts             builds the executable schema from modules/index.ts
+  app.ts                the express pipeline
+  server.ts             boot, listen, graceful shutdown
 ```
+
+### How the modules join up
+
+Each module's `typeDefs` uses `extend type Query { ... }` and
+`extend type Mutation { ... }`. `modules/index.ts` declares both types empty
+and every module adds to them — which is why two modules can each add queries
+without clashing.
+
+Resolvers merge the same way: `Query` and `Mutation` are spread together, and
+anything else a module exports (a union `__resolveType`, field resolvers like
+`User.bmi`) merges per type.
+
+Modules may import each other through the folder's `index.ts`, never by
+reaching inside it. Today: `auth` imports `User` from `modules/user`, and
+`user` imports `Otp` and `Device` from `modules/auth` so account deletion can
+erase them.
 
 ### Adding a feature
 
 Say you are adding water tracking:
 
-1. `models/water.model.ts` — the schema, then export it from `models/index.ts`
-2. `types/index.ts` — add the Input shapes it needs
-3. `services/water.service.ts` — the logic; import the model directly
-4. `graphql/typeDefs/water.ts` — its SDL, using `extend type Query { ... }`
-5. `graphql/typeDefs/index.ts` — import it, add it to the array
-6. `graphql/resolvers/water.ts` — resolvers calling the service
-7. `graphql/resolvers/index.ts` — import it, add it to the array
-8. **`services/user.service.ts` — add the new model to `USER_OWNED`**
+1. Create `src/modules/water/`
+2. `water.model.ts`, `water.types.ts`, `water.service.ts`,
+   `water.typeDefs.ts`, `water.resolvers.ts`
+3. `water/index.ts` — export `typeDefs` and `resolvers`
+4. `modules/index.ts` — import it, add it to the `modules` array
+5. **`modules/user/user.service.ts` — add the new model to `USER_OWNED`**
 
-Step 8 is the one that matters most and is easiest to forget. A model with a
-`user` field that is not in that list means the user's health data stays in the
-database after they ask for their account to be deleted.
+Step 5 is the one that matters most and is easiest to forget. A model with a
+`user` field that is not in that list means the person's health data stays in
+the database after they ask for their account to be deleted.
 
 ## Conventions
 
 - **Services hold the logic. Resolvers do not.** A resolver reads arguments,
   calls a service, returns. If you are writing an `if` about a business rule in
   a resolver, it belongs in the service.
-- **Every resolver that needs a user starts with `requireAuth(context)`** and
+- **Every resolver that needs a user starts with `requireAuth(context)`** (from `shared/auth-guard.ts`) and
   wraps its body in `try/catch` with `handleError(error, 'fieldName')`. The
   catch is what stops a raw stack trace reaching the API response.
-- **Errors carry a code** from `utils/errors.ts`. The app branches on the code,
+- **Errors carry a code** from `shared/errors.ts`. The app branches on the code,
   never the message — messages get translated and reworded. Throw with
   `appError(ErrorCode.X, 'message')`.
 - **Every query on user data filters by the user.** `{ user: user._id }` — never
@@ -103,7 +126,7 @@ database after they ask for their account to be deleted.
   records.
 - **Validate on the server even though the app validates too.** curl bypasses
   the app entirely. Rules live in `utils/validation.ts`.
-- **Dates go through `utils/datetime.ts`.** NEVER write
+- **Dates go through `shared/datetime.ts`.** NEVER write
   `new Date().toISOString().slice(0, 10)` — that is the UTC day, not the user's.
   A glass of water logged at 00:30 in Bujumbura is 22:30 the previous day in
   UTC, so that line files it under yesterday. Use `dayInZone(date, timezone)`.
@@ -126,19 +149,19 @@ Order matters:
 - Both rate limiters key on `req.ip`, which express resolves via `trust proxy`.
   **Never** read `x-forwarded-for` directly — the caller writes that header, so a
   fresh value per request means a fresh budget.
-- Check the `RULES` table in `middleware/rateLimit.ts` before assuming a new
+- Check the `RULES` table in `shared/middleware/rateLimit.ts` before assuming a new
   mutation is unlimited. Unlisted fields fall through to a default budget.
 - Rate-limit counters are IN MEMORY. They reset on restart and are not shared
   between instances. That is deliberate while one instance runs — swap the Map
   for Redis before running a second, not before.
 
-## Auth (`src/services/`)
+## Auth (`src/modules/auth/`)
 
 JWT, HS256, algorithm and issuer pinned on sign AND verify. Pinning on verify is
 what stops an `alg: none` token being accepted.
 
 Every token carries the user's `tokenVersion` at signing time.
-`middleware/auth.ts` rejects a token whose version is behind the user's current
+`shared/middleware/auth.ts` rejects a token whose version is behind the user's current
 one — so bumping `tokenVersion` logs out every device at once. Logout, password
 change and password reset all do that.
 

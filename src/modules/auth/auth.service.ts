@@ -1,18 +1,18 @@
 import bcrypt from 'bcryptjs';
-import { User, type IUser } from '../models/index.js';
-import { env } from '../config/env.js';
-import { appError, ErrorCode } from '../utils/errors.js';
+import { User, type IUser } from '../user/user.model.js';
+import { env } from '../../config/env.js';
+import { appError, ErrorCode } from '../../shared/errors.js';
 import {
   normalizeEmail,
   tryNormalizeEmail,
   checkPassword,
   checkDeviceId,
   maskEmail,
-} from '../utils/validation.js';
+} from '../../shared/validation.js';
 import { signToken, signResetToken, verifyResetToken, isSessionTooOld } from './token.service.js';
 import { sendCode, sendCodeBestEffort, verifyCode } from './otp.service.js';
 import { isDeviceTrusted, trustDevice, touchDevice, revokeAllDevices } from './device.service.js';
-import { minutesFromNow } from '../utils/datetime.js';
+import { minutesFromNow } from '../../shared/datetime.js';
 import type {
   SignUpInput,
   LoginInput,
@@ -21,7 +21,7 @@ import type {
   AuthPayload,
   LoginResult,
   ResetTicket,
-} from '../types/index.js';
+} from './auth.types.js';
 
 //THE AUTH FLOWS.
 //
@@ -316,4 +316,3 @@ export const logout = async (userId: string): Promise<boolean> => {
   return true;
 };
 
-export const getMe = (userId: string): Promise<IUser> => findUserOrThrow(userId);

@@ -1,7 +1,7 @@
-import { env } from '../config/env.js';
-import { appError, ErrorCode } from '../utils/errors.js';
-import type { OtpPurpose } from '../models/index.js';
-import { maskEmail } from '../utils/validation.js';
+import { env } from '../../config/env.js';
+import { appError, ErrorCode } from '../../shared/errors.js';
+import type { OtpPurpose } from './otp.model.js';
+import { maskEmail } from '../../shared/validation.js';
 
 //EMAIL VIA RESEND.
 //

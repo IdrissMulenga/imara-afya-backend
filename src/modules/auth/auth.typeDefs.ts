@@ -1,53 +1,10 @@
-//THE USER / AUTH SCHEMA.
+//THE AUTH SCHEMA.
 //
-//`/* GraphQL */` before the backtick tells editors to syntax-highlight the
-//string as GraphQL. It does nothing at runtime.
+//This module owns signing up, signing in, codes, passwords and devices. The
+//User type itself belongs to the user module — AuthPayload just refers to it,
+//which works because all modules' typeDefs become one schema.
 
-export const userTypeDefs = /* GraphQL */ `
-  type User {
-    id: ID!
-    email: String!
-    emailVerified: Boolean!
-
-    name: String!
-    photoUrl: String!
-    gender: Gender!
-    birthDate: String
-    heightCm: Float
-    weightKg: Float
-    "Worked out from height and weight — never stored."
-    bmi: Float
-
-    language: Language!
-    units: Units!
-    timezone: String!
-    cycleTrackingEnabled: Boolean!
-
-    waterGoalGlasses: Float!
-    stepGoal: Int!
-    sleepGoalHours: Float!
-
-    createdAt: String!
-  }
-
-  enum Gender {
-    female
-    male
-    unspecified
-  }
-
-  enum Language {
-    en
-    fr
-    sw
-    rn
-  }
-
-  enum Units {
-    metric
-    imperial
-  }
-
+export const authTypeDefs = /* GraphQL */ `
   type AuthPayload {
     token: String!
     user: User!
@@ -116,31 +73,7 @@ export const userTypeDefs = /* GraphQL */ `
     newPassword: String!
   }
 
-  input DeleteAccountInput {
-    password: String!
-  }
-
-  input UpdateProfileInput {
-    name: String
-    photoUrl: String
-    gender: Gender
-    birthDate: String
-    heightCm: Float
-    weightKg: Float
-  }
-
-  input PreferencesInput {
-    language: Language
-    units: Units
-    timezone: String
-    cycleTrackingEnabled: Boolean
-    waterGoalGlasses: Float
-    stepGoal: Int
-    sleepGoalHours: Float
-  }
-
   extend type Query {
-    me: User!
     myTrustedDevices: [TrustedDevice!]!
   }
 
@@ -164,9 +97,5 @@ export const userTypeDefs = /* GraphQL */ `
     logout: Boolean!
 
     revokeTrustedDevice(id: ID!): Boolean!
-
-    updateProfile(input: UpdateProfileInput!): User!
-    setPreferences(input: PreferencesInput!): User!
-    deleteAccount(input: DeleteAccountInput!): Boolean!
   }
 `;

@@ -2,9 +2,9 @@ import type { Request, Response, NextFunction } from 'express';
 import type { Plugin } from 'graphql-yoga';
 import { createHash } from 'node:crypto';
 import { GraphQLError, getOperationAST, Kind } from 'graphql';
-import { env } from '../config/env.js';
-import { ErrorCode } from '../utils/errors.js';
-import type { Context } from '../types/index.js';
+import { env } from '../../config/env.js';
+import { ErrorCode } from '../errors.js';
+import type { Context } from '../context.js';
 
 //RATE LIMITING.
 //

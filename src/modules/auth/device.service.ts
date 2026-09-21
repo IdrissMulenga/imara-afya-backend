@@ -1,9 +1,9 @@
 import type { Types } from 'mongoose';
-import { Device } from '../models/index.js';
-import { env } from '../config/env.js';
-import { appError, ErrorCode } from '../utils/errors.js';
-import { cleanText } from '../utils/validation.js';
-import { daysFromNow } from '../utils/datetime.js';
+import { Device } from './device.model.js';
+import { env } from '../../config/env.js';
+import { appError, ErrorCode } from '../../shared/errors.js';
+import { cleanText } from '../../shared/validation.js';
+import { daysFromNow } from '../../shared/datetime.js';
 
 //DEVICE TRUST.
 //

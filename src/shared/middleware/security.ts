@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { Plugin } from 'graphql-yoga';
 import { NoSchemaIntrospectionCustomRule, GraphQLError, Kind, type ASTNode, type DocumentNode, type ValidationContext } from 'graphql';
-import { env } from '../config/env.js';
+import { env } from '../../config/env.js';
 
 //SECURITY HEADERS.
 //

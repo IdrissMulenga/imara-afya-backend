@@ -1,13 +1,18 @@
 import bcrypt from 'bcryptjs';
 import type { Model } from 'mongoose';
-import { User, Otp, Device, type IUser } from '../models/index.js';
-import { appError, ErrorCode } from '../utils/errors.js';
-import { cleanText, checkTimezone } from '../utils/validation.js';
-import type { UpdateProfileInput, PreferencesInput } from '../types/index.js';
+import { User, type IUser } from './user.model.js';
+//Auth owns these two collections; user.service erases them on account deletion.
+import { Otp, Device } from '../auth/index.js';
+import { appError, ErrorCode } from '../../shared/errors.js';
+import { cleanText, checkTimezone } from '../../shared/validation.js';
+import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
 
 //PROFILE AND ACCOUNT.
 
-const findUserOrThrow = async (id: string): Promise<IUser> => {
+//Used by every function below, and exported because the `me` query needs it
+//too. Having it once means the error code and message cannot drift apart
+//between the places that look a user up.
+export const getUser = async (id: string): Promise<IUser> => {
   const user = await User.findById(id);
   if (!user) throw appError(ErrorCode.ACCOUNT_NOT_FOUND, 'That account no longer exists.');
   return user;
@@ -22,7 +27,7 @@ const inRange = (value: number, min: number, max: number, label: string): number
 };
 
 export const updateProfile = async (userId: string, input: UpdateProfileInput): Promise<IUser> => {
-  const user = await findUserOrThrow(userId);
+  const user = await getUser(userId);
 
   //`!== undefined` matters: a field the app did not send must be left alone,
   //not overwritten with undefined.
@@ -45,7 +50,7 @@ export const updateProfile = async (userId: string, input: UpdateProfileInput): 
 };
 
 export const setPreferences = async (userId: string, input: PreferencesInput): Promise<IUser> => {
-  const user = await findUserOrThrow(userId);
+  const user = await getUser(userId);
 
   if (input.language !== undefined) user.language = input.language;
   if (input.units !== undefined) user.units = input.units;
@@ -73,7 +78,7 @@ export const setPreferences = async (userId: string, input: PreferencesInput): P
 const USER_OWNED: Model<{ user: unknown }>[] = [Otp, Device] as unknown as Model<{ user: unknown }>[];
 
 export const deleteAccount = async (userId: string, password: string): Promise<boolean> => {
-  const user = await findUserOrThrow(userId);
+  const user = await getUser(userId);
 
   //The password is required even though the caller holds a valid session. A
   //phone left unlocked on a table should not be one tap from erasing someone's

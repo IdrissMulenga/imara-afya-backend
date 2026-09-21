@@ -3,11 +3,11 @@ import cors from 'cors';
 import { createYoga } from 'graphql-yoga';
 import { env } from './config/env.js';
 import { isDBReady } from './config/db.js';
-import { schema } from './graphql/schema.js';
-import { getUserFromRequest } from './middleware/auth.js';
-import { securityHeaders, securityPlugin } from './middleware/security.js';
-import { ipRateLimit, operationLimitPlugin } from './middleware/rateLimit.js';
-import type { Context } from './types/index.js';
+import { schema } from './schema.js';
+import { getUserFromRequest } from './shared/middleware/auth.js';
+import { securityHeaders, securityPlugin } from './shared/middleware/security.js';
+import { ipRateLimit, operationLimitPlugin } from './shared/middleware/rateLimit.js';
+import type { Context } from './shared/context.js';
 
 //THE EXPRESS APP.
 //
@@ -71,7 +71,7 @@ export const createApp = (): Express => {
     graphqlEndpoint: '/graphql',
     graphiql: !env.IS_PRODUCTION,
     //Yoga hides unexpected errors by default. Ours already carry proper codes
-    //from utils/errors.ts, so masking again would replace them with a generic
+    //from shared/errors.ts, so masking again would replace them with a generic
     //one and the app would lose the ability to branch.
     maskedErrors: false,
     landingPage: false,

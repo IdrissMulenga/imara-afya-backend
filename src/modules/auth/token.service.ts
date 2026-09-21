@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
-import { env } from '../config/env.js';
-import { appError, ErrorCode } from '../utils/errors.js';
+import { env } from '../../config/env.js';
+import { appError, ErrorCode } from '../../shared/errors.js';
 
 //TOKENS.
 //
