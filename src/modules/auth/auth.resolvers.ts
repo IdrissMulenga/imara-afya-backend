@@ -16,18 +16,12 @@ import type {
   AuthPayload,
 } from './auth.types.js';
 
-//AUTH RESOLVERS.
-//
-//Read the arguments, call the service, return. Nothing else.
-
 export const authResolvers = {
   Query: {
     myTrustedDevices: async (_p: unknown, _a: unknown, context: Context) => {
       const caller = requireAuth(context);
       try {
         const devices = await listDevices(caller._id);
-        //The app sends its own id as a header so we can mark which row is the
-        //phone the user is holding.
         const currentId = context.req.get('x-device-id');
 
         return devices.map((device) => ({
@@ -44,7 +38,6 @@ export const authResolvers = {
   },
 
   Mutation: {
-    //--- creating an account and signing in ---
     signup: async (_p: unknown, args: { input: SignUpInput }, context: Context) => {
       try {
         return await authService.signup({ ...args.input, ip: context.ip });
@@ -64,7 +57,13 @@ export const authResolvers = {
     verifyLoginOtp: async (_p: unknown, args: { email: string; input: VerifyOtpInput }) => {
       try {
         if (!args.input.deviceId) {
-          throw appError(ErrorCode.INVALID_DEVICE_ID, 'This request is missing its device identifier.');
+          throw appError(
+            ErrorCode.INVALID_DEVICE_ID,
+            'This request is missing its device identifier.',
+            {
+              reason: 'MISSING',
+            }
+          );
         }
         return await authService.verifyLoginOtp({
           email: args.email,
@@ -89,7 +88,6 @@ export const authResolvers = {
       }
     },
 
-    //--- confirming the email address ---
     verifyEmailOtp: async (_p: unknown, args: { input: VerifyOtpInput }, context: Context) => {
       const caller = requireAuth(context);
       try {
@@ -108,7 +106,6 @@ export const authResolvers = {
       }
     },
 
-    //--- resetting a forgotten password ---
     requestPasswordReset: async (_p: unknown, args: { email: string }, context: Context) => {
       try {
         return await authService.requestPasswordReset(args.email, context.ip);
@@ -117,9 +114,7 @@ export const authResolvers = {
       }
     },
 
-    //Same work as requestPasswordReset. It is a separate field so the two can
-    //have separate rate-limit budgets — a first request and a resend are
-    //different behaviours to a limiter.
+    //Resends the reset code; same as requestPasswordReset with its own rate limit.
     resendPasswordResetOtp: async (_p: unknown, args: { email: string }, context: Context) => {
       try {
         return await authService.requestPasswordReset(args.email, context.ip);
@@ -145,7 +140,6 @@ export const authResolvers = {
       }
     },
 
-    //--- managing the session ---
     changePassword: async (_p: unknown, args: { input: ChangePasswordInput }, context: Context) => {
       const caller = requireAuth(context);
       try {
@@ -158,13 +152,6 @@ export const authResolvers = {
     refreshSession: async (_p: unknown, _a: unknown, context: Context) => {
       const caller = requireAuth(context);
       try {
-        //FROM THE SIGNED TOKEN, never from a header.
-        //
-        //This used to read `x-session-origin` off the request, which meant the
-        //caller decided how old their own session was. Sending today's date on
-        //every refresh kept a session alive forever, and a client that simply
-        //omitted the header got the same effect by accident — the absolute cap
-        //in MAX_SESSION_DAYS did nothing at all.
         const origin = context.sessionOrigin;
         if (!origin) {
           throw appError(ErrorCode.SESSION_EXPIRED, 'Please sign in again to continue.');
@@ -195,11 +182,7 @@ export const authResolvers = {
     },
   },
 
-  //THE UNION RESOLVER.
-  //
-  //GraphQL cannot tell on its own which member of LoginResult it received.
-  //This tells it. WITHOUT THIS, EVERY LOGIN FAILS AT RUNTIME — and it is easy
-  //to miss because it does not sit under Query or Mutation.
+  //Tells GraphQL which LoginResult member was returned.
   LoginResult: {
     __resolveType: (value: LoginResult) => (isAuthPayload(value) ? 'AuthPayload' : 'OtpChallenge'),
   },

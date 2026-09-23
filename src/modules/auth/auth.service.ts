@@ -23,39 +23,23 @@ import type {
   ResetTicket,
 } from './auth.types.js';
 
-//THE AUTH FLOWS.
-//
-//Each function is one thing a user can do. Resolvers call these; they contain
-//no logic of their own.
-
 const PASSWORD_ROUNDS = 12;
 
-//A hash to compare against when no user was found. See the note in login().
 const DUMMY_HASH = bcrypt.hashSync('imara-afya-timing-equaliser', PASSWORD_ROUNDS);
 
-//Used by nine flows. Having it once means the message and code cannot drift
-//apart between them.
 const findUserOrThrow = async (id: string): Promise<IUser> => {
   const user = await User.findById(id);
   if (!user) throw appError(ErrorCode.ACCOUNT_NOT_FOUND, 'That account no longer exists.');
   return user;
 };
 
-//`origin` defaults to now (a fresh sign-in). refreshSession passes the
-//ORIGINAL origin forward, which is what stops renewing from resetting the
-//30-day clock.
+//Signs a session token. origin is the time of the original sign-in.
 const makeSession = (user: IUser, origin = new Date()): AuthPayload => ({
   token: signToken(String(user._id), user.tokenVersion, origin),
   user,
 });
 
-//SIGN UP.
-//
-//Returns a working session straight away. Verification happens afterwards from
-//inside the app — a user who cannot log a glass of water on day one does not
-//come back on day two. The one thing an unverified account cannot do is
-//recover itself, because sending a recovery code to an unproven address is how
-//an account gets handed to a typo.
+//Creates an account and returns a session; the email is verified later.
 export const signup = async (input: SignUpInput & { ip: string }): Promise<AuthPayload> => {
   const email = normalizeEmail(input.email);
   checkPassword(input.password);
@@ -68,10 +52,9 @@ export const signup = async (input: SignUpInput & { ip: string }): Promise<AuthP
   const user = await User.create({
     email,
     passwordHash: await bcrypt.hash(input.password, PASSWORD_ROUNDS),
+    ...(input.language ? { language: input.language } : {}),
   });
 
-  //The signing-up phone is trusted from the start. Asking for a code on the
-  //device that just created the account proves nothing.
   await trustDevice({ userId: user._id, deviceId, label: input.deviceLabel });
 
   await sendCodeBestEffort({ user, purpose: 'SIGNUP', ip: input.ip, skipCooldown: true });
@@ -79,28 +62,20 @@ export const signup = async (input: SignUpInput & { ip: string }): Promise<AuthP
   return makeSession(user);
 };
 
-//LOG IN.
-//
-//A trusted phone gets a token. Anything else gets a code and NO token.
+//A trusted device gets a token; any other device gets a code and no token.
 export const login = async (input: LoginInput & { ip: string }): Promise<LoginResult> => {
   const email = normalizeEmail(input.email);
   const deviceId = checkDeviceId(input.deviceId);
 
   const user = await User.findOne({ email });
 
-  //TIMING SAFETY — do not "optimise" this away.
-  //
-  //If we returned early when no user was found, an unknown email would answer
-  //in ~1ms while a known one takes the ~100ms bcrypt costs. That gap tells an
-  //attacker which addresses have accounts. So a comparison runs either way.
+  //Compares against a dummy hash so an unknown email takes as long as a known one.
   if (!user) {
     await bcrypt.compare(input.password, DUMMY_HASH);
     throw appError(ErrorCode.INVALID_CREDENTIALS, 'That email or password is not right.');
   }
 
   if (!(await bcrypt.compare(input.password, user.passwordHash))) {
-    //Same message as above, on purpose. "No account with that email" is a free
-    //account-enumeration tool.
     throw appError(ErrorCode.INVALID_CREDENTIALS, 'That email or password is not right.');
   }
 
@@ -109,9 +84,7 @@ export const login = async (input: LoginInput & { ip: string }): Promise<LoginRe
     return makeSession(user);
   }
 
-  //An unverified address cannot receive a login code — we have no evidence it
-  //belongs to this person. They can still sign in from the phone they signed
-  //up on, and verify from there.
+  //Unverified addresses cannot receive login codes.
   if (!user.emailVerified) {
     throw appError(
       ErrorCode.EMAIL_NOT_VERIFIED,
@@ -124,7 +97,6 @@ export const login = async (input: LoginInput & { ip: string }): Promise<LoginRe
   return { challenge: true, purpose: 'LOGIN', expiresAt, maskedEmail: maskEmail(user.email) };
 };
 
-//FINISH SIGNING IN FROM A NEW PHONE.
 export const verifyLoginOtp = async (input: {
   email: string;
   code: string;
@@ -136,19 +108,27 @@ export const verifyLoginOtp = async (input: {
 
   const user = await User.findOne({ email });
 
-  //Same error as a wrong code — an unknown address must not look different
-  //from a known one with a bad code.
+  //An unknown email gets the same error as a wrong code.
   if (!user) {
-    throw appError(ErrorCode.OTP_NOT_FOUND, 'That code is no longer valid. Please ask for a new one.');
+    throw appError(
+      ErrorCode.OTP_NOT_FOUND,
+      'That code is no longer valid. Please ask for a new one.'
+    );
   }
 
-  const { deviceId: issuedFor } = await verifyCode({ userId: user._id, purpose: 'LOGIN', code: input.code });
+  const { deviceId: issuedFor } = await verifyCode({
+    userId: user._id,
+    purpose: 'LOGIN',
+    code: input.code,
+  });
 
-  //A code issued for one phone must not trust a different one. Without this, a
-  //code read off someone's screen could be replayed from another device to
-  //make the attacker's phone permanently trusted.
+  //Rejects a code that was issued for a different device.
   if (issuedFor && issuedFor !== deviceId) {
-    throw appError(ErrorCode.OTP_NOT_FOUND, 'That code was for a different device. Please sign in again.');
+    throw appError(
+      ErrorCode.OTP_NOT_FOUND,
+      'That code was for a different device. Please sign in again.',
+      { reason: 'OTHER_DEVICE' }
+    );
   }
 
   await trustDevice({ userId: user._id, deviceId, label: input.deviceLabel });
@@ -156,11 +136,9 @@ export const verifyLoginOtp = async (input: {
   return makeSession(user);
 };
 
-//CONFIRM THE SIGNUP ADDRESS. Authenticated — the user is inside the app.
 export const verifyEmailOtp = async (userId: string, code: string): Promise<IUser> => {
   const user = await findUserOrThrow(userId);
 
-  //Idempotent. Tapping verify twice should not produce a confusing error.
   if (user.emailVerified) return user;
 
   await verifyCode({ userId: user._id, purpose: 'SIGNUP', code });
@@ -179,23 +157,22 @@ export const resendEmailOtp = async (userId: string, ip: string): Promise<boolea
   return true;
 };
 
-export const resendLoginOtp = async (email: string, deviceId: string, ip: string): Promise<boolean> => {
+export const resendLoginOtp = async (
+  email: string,
+  deviceId: string,
+  ip: string
+): Promise<boolean> => {
   const normalized = normalizeEmail(email);
   const device = checkDeviceId(deviceId);
 
   const user = await User.findOne({ email: normalized });
-  //Silent success for unknown or unverified — nothing is sent.
   if (!user || !user.emailVerified) return true;
 
   await sendCode({ user, purpose: 'LOGIN', ip, deviceId: device });
   return true;
 };
 
-//PASSWORD RESET, STEP 1.
-//
-//ALWAYS returns true — for a bad address, an unknown one, an unverified one,
-//and a real one. Any difference between those is a signal an attacker can use
-//to find out which addresses have accounts. Failures are logged, not thrown.
+//Emails a reset code. Always returns true, whether or not the account exists.
 export const requestPasswordReset = async (email: string, ip: string): Promise<boolean> => {
   const normalized = tryNormalizeEmail(email);
   if (!normalized) return true;
@@ -206,21 +183,21 @@ export const requestPasswordReset = async (email: string, ip: string): Promise<b
   try {
     await sendCode({ user, purpose: 'RESET', ip });
   } catch (error) {
-    //A cooldown or a dead mail provider must not become a signal either.
     console.warn('[auth] reset code not sent:', error);
   }
 
   return true;
 };
 
-//PASSWORD RESET, STEP 2. Trades a proven code for a short-lived ticket, so the
-//code is not carried around and re-sent with the new password.
 export const verifyPasswordResetOtp = async (email: string, code: string): Promise<ResetTicket> => {
   const normalized = normalizeEmail(email);
   const user = await User.findOne({ email: normalized });
 
   if (!user) {
-    throw appError(ErrorCode.OTP_NOT_FOUND, 'That code is no longer valid. Please ask for a new one.');
+    throw appError(
+      ErrorCode.OTP_NOT_FOUND,
+      'That code is no longer valid. Please ask for a new one.'
+    );
   }
 
   await verifyCode({ userId: user._id, purpose: 'RESET', code });
@@ -231,50 +208,45 @@ export const verifyPasswordResetOtp = async (email: string, code: string): Promi
   };
 };
 
-//PASSWORD RESET, STEP 3.
 export const resetPassword = async (input: ResetPasswordInput): Promise<AuthPayload> => {
   checkPassword(input.password);
   const deviceId = checkDeviceId(input.deviceId);
 
-  //Rejects a session token presented here — the ticket carries a purpose claim
-  //that this checks.
   const ticket = verifyResetToken(input.resetToken);
   const user = await findUserOrThrow(ticket.userId);
 
-  //SINGLE USE. The tokenVersion bump further down moves the account on, so a
-  //ticket that has already succeeded no longer matches. A replay inside the
-  //15-minute window lands here instead of setting a second new password.
+  //Rejects a reset ticket that has already been used.
   if (ticket.tokenVersion !== user.tokenVersion) {
     throw appError(
       ErrorCode.INVALID_RESET_TOKEN,
-      'That reset request has already been used. Please start again.'
+      'That reset request has already been used. Please start again.',
+      { reason: 'USED' }
     );
   }
 
   if (await bcrypt.compare(input.password, user.passwordHash)) {
-    throw appError(ErrorCode.PASSWORD_UNCHANGED, 'That is your current password. Please choose a different one.');
+    throw appError(
+      ErrorCode.PASSWORD_UNCHANGED,
+      'That is your current password. Please choose a different one.'
+    );
   }
 
   user.passwordHash = await bcrypt.hash(input.password, PASSWORD_ROUNDS);
-  //Retires every token this account ever issued.
   user.tokenVersion += 1;
   user.failedPasswordAttempts = 0;
   await user.save();
 
-  //Someone resetting because they think the account was taken should not leave
-  //the other person's phone trusted. Everything goes, then this device alone
-  //is trusted again.
+  //Revokes all trusted devices, then trusts this one.
   await revokeAllDevices(user._id);
   await trustDevice({ userId: user._id, deviceId, label: input.deviceLabel });
 
-  //Logged straight in — making someone reset a password then immediately type
-  //it again is friction with no security value.
   return makeSession(user);
 };
 
-//CHANGE PASSWORD. Authenticated, current password required, no code — the
-//session is already proof of possession.
-export const changePassword = async (userId: string, input: ChangePasswordInput): Promise<AuthPayload> => {
+export const changePassword = async (
+  userId: string,
+  input: ChangePasswordInput
+): Promise<AuthPayload> => {
   checkPassword(input.newPassword);
   const user = await findUserOrThrow(userId);
 
@@ -302,27 +274,19 @@ export const changePassword = async (userId: string, input: ChangePasswordInput)
   user.failedPasswordAttempts = 0;
   await user.save();
 
-  //Trusted devices survive. Rotating a password you know is a different signal
-  //from resetting one you lost.
   return makeSession(user);
 };
 
-//REFRESH. Extends the window without the password, up to the 30-day cap on the
-//original sign-in.
 export const refreshSession = async (userId: string, origin: string): Promise<AuthPayload> => {
   if (isSessionTooOld(origin)) {
     throw appError(ErrorCode.SESSION_EXPIRED, 'Please sign in again to continue.');
   }
   const user = await findUserOrThrow(userId);
-  //The ORIGINAL origin goes forward, so refreshing does not reset the clock.
   return makeSession(user, new Date(origin));
 };
 
-//LOG OUT. Bumps tokenVersion, retiring every token this account issued — not
-//just the one presented. Signing out on a lost phone signs out everywhere,
-//which is what people expect the button to mean.
+//Bumping tokenVersion signs out every device, not just this one.
 export const logout = async (userId: string): Promise<boolean> => {
   await User.updateOne({ _id: userId }, { $inc: { tokenVersion: 1 } });
   return true;
 };
-

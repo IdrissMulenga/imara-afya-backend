@@ -5,20 +5,10 @@ import { appError, ErrorCode } from '../../shared/errors.js';
 import { cleanText } from '../../shared/validation.js';
 import { daysFromNow } from '../../shared/datetime.js';
 
-//DEVICE TRUST.
-//
-//Decides whether a phone has to type a code. See device.model.ts for why this
-//is NOT a security factor.
-
-//ENFORCED in trustDevice below, not just applied as a `.limit()` on the list.
-//It used to be the limit alone, which meant rows grew without bound and the
-//user could not revoke a phone the list was quietly hiding from them.
+//Maximum trusted devices per user.
 const MAX_DEVICES = 20;
 
-//Keeps the most recently seen MAX_DEVICES rows and drops the rest.
-//
-//Nothing is lost by evicting: a dropped phone simply types a code the next time
-//it signs in, which is the ordinary path for a device we do not recognise.
+//Deletes the least recently seen devices beyond MAX_DEVICES.
 const evictBeyondCap = async (userId: Types.ObjectId): Promise<void> => {
   const surplus = await Device.find({ user: userId })
     .sort({ lastSeenAt: -1 })
@@ -31,17 +21,23 @@ const evictBeyondCap = async (userId: Types.ObjectId): Promise<void> => {
   await Device.deleteMany({ _id: { $in: surplus.map((device) => device._id) } });
 };
 
-export const isDeviceTrusted = async (userId: Types.ObjectId, deviceId: string): Promise<boolean> => {
+export const isDeviceTrusted = async (
+  userId: Types.ObjectId,
+  deviceId: string
+): Promise<boolean> => {
   const device = await Device.findOne({ user: userId, deviceId }).lean();
-  //Checked here as well as by the TTL index, for the same reason as the codes:
-  //the index sweeps on its own schedule.
   return device !== null && device.expiresAt.getTime() > Date.now();
 };
 
-//Update-or-insert, so logging in twice from the same phone refreshes the
-//window instead of creating a second row.
-export const trustDevice = async (params: { userId: Types.ObjectId; deviceId: string; label?: string }): Promise<void> => {
-  const label = params.label ? cleanText(params.label, 80, 'Device name') || 'Unknown device' : 'Unknown device';
+//Trusts a device for DEVICE_TRUST_DAYS (insert or refresh).
+export const trustDevice = async (params: {
+  userId: Types.ObjectId;
+  deviceId: string;
+  label?: string;
+}): Promise<void> => {
+  const label = params.label
+    ? cleanText(params.label, 80, 'deviceName') || 'Unknown device'
+    : 'Unknown device';
 
   await Device.updateOne(
     { user: params.userId, deviceId: params.deviceId },
@@ -55,8 +51,7 @@ export const trustDevice = async (params: { userId: Types.ObjectId; deviceId: st
   await evictBeyondCap(params.userId);
 };
 
-//Called on a login that did not need a code, so a phone in weekly use never
-//lapses.
+//Extends trust for a device that just signed in.
 export const touchDevice = async (userId: Types.ObjectId, deviceId: string): Promise<void> => {
   await Device.updateOne(
     { user: userId, deviceId },
@@ -71,8 +66,6 @@ export const revokeDevice = async (userId: Types.ObjectId, id: string): Promise<
   if (!/^[0-9a-fA-F]{24}$/.test(id)) {
     throw appError(ErrorCode.DEVICE_NOT_FOUND, 'That device is no longer on the list.');
   }
-  //Filtered by user AND id. Without the user filter any signed-in caller could
-  //revoke anyone's device by guessing an id.
   const result = await Device.deleteOne({ _id: id, user: userId });
   if (result.deletedCount === 0) {
     throw appError(ErrorCode.DEVICE_NOT_FOUND, 'That device is no longer on the list.');

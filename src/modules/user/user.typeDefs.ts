@@ -1,11 +1,3 @@
-//THE USER SCHEMA.
-//
-//This module owns the User type and everything about a person's profile.
-//Signing in belongs to the auth module.
-//
-//`extend type Query` adds to the Query type that modules/index.ts declares.
-//That is how two modules can both add fields without clashing.
-
 export const userTypeDefs = /* GraphQL */ `
   type User {
     id: ID!
@@ -51,9 +43,9 @@ export const userTypeDefs = /* GraphQL */ `
     imperial
   }
 
+  "Omitted fields are unchanged; null clears birthDate, heightCm or weightKg. The photo is set via /upload/avatar."
   input UpdateProfileInput {
     name: String
-    photoUrl: String
     gender: Gender
     birthDate: String
     heightCm: Float

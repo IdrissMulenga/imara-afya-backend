@@ -11,10 +11,7 @@ const required = (key: string): string => {
 
 const optional = (key: string, fallback = ''): string => (process.env[key] ?? fallback).trim();
 
-//`min` defaults to 1. Every number below is a count, a size or a duration, and
-//a zero or negative one fails later in a way that looks like a code bug rather
-//than a typo in .env — OTP_MAX_ATTEMPTS=0 would lock out every user in the
-//country and log nothing at all.
+//Reads a numeric variable, rejecting values below min.
 const number = (key: string, fallback: number, min = 1): number => {
   const raw = process.env[key];
   if (!raw || raw.trim() === '') return fallback;
@@ -28,10 +25,7 @@ const number = (key: string, fallback: number, min = 1): number => {
   return parsed;
 };
 
-//HS256 IS ONLY AS STRONG AS THIS STRING. A short secret can be brute-forced
-//offline, and whoever recovers it can mint a valid token for any account —
-//which walks past every other control in this codebase. 32 characters is the
-//floor; `openssl rand -base64 48` produces a good one.
+//Minimum JWT secret length.
 const JWT_SECRET_MIN = 32;
 
 const secret = (key: string): string => {
@@ -58,8 +52,8 @@ export const env = {
 
   JWT_SECRET: secret('JWT_SECRET'),
   JWT_ISSUER: optional('JWT_ISSUER', 'imara-afya'),
-  SESSION_DAYS: number('SESSION_DAYS', 7),
-  MAX_SESSION_DAYS: number('MAX_SESSION_DAYS', 30),
+  SESSION_DAYS: number('SESSION_DAYS', 30),
+  MAX_SESSION_DAYS: number('MAX_SESSION_DAYS', 365),
   RESET_TOKEN_MINUTES: number('RESET_TOKEN_MINUTES', 15),
 
   OTP_TTL_MINUTES: number('OTP_TTL_MINUTES', 10),
@@ -67,26 +61,28 @@ export const env = {
   OTP_RESEND_COOLDOWN_SECONDS: number('OTP_RESEND_COOLDOWN_SECONDS', 60),
   OTP_RESENDS_PER_HOUR: number('OTP_RESENDS_PER_HOUR', 3),
   DEVICE_TRUST_DAYS: number('DEVICE_TRUST_DAYS', 90),
+
+  //Avatar storage directory, relative to the working directory.
+  UPLOAD_DIR: optional('UPLOAD_DIR', 'uploads'),
+  MAX_UPLOAD_MB: number('MAX_UPLOAD_MB', 10),
   MAX_PASSWORD_ATTEMPTS: number('MAX_PASSWORD_ATTEMPTS', 5),
 
-  //Empty allows ANY origin. Fine for the Expo app (it sends no Origin header),
-  //wrong once a web build exists.
+  //Empty allows any origin.
   FRONTEND_URL: optional('FRONTEND_URL'),
   RATE_LIMIT_WINDOW_MS: number('RATE_LIMIT_WINDOW_MS', 60_000),
-  //Per IP, and in Burundi a single carrier address can front thousands of
-  //subscribers (CGNAT), so this is deliberately generous. It is a backstop
-  //against one hostile client; the limits that matter are per-field and
-  //per-account in shared/middleware/rateLimit.ts.
+  //Requests per IP per window.
   RATE_LIMIT_MAX: number('RATE_LIMIT_MAX', 600),
   MAX_QUERY_DEPTH: number('MAX_QUERY_DEPTH', 10),
 
   RESEND_API_KEY: optional('RESEND_API_KEY'),
   MAIL_FROM: optional('MAIL_FROM', 'onboarding@resend.dev'),
   MAIL_REPLY_TO: optional('MAIL_REPLY_TO'),
+
+  //Development only: every code goes to this address. Ignored in production.
+  MAIL_DEV_TO: optional('MAIL_DEV_TO'),
 } as const;
 
-//SETTINGS THAT MUST NOT REACH PRODUCTION AT ALL. Thrown rather than warned — a
-//warning in a log nobody reads is exactly how a wide-open CORS policy ships.
+//Settings required in production.
 if (env.IS_PRODUCTION) {
   if (!env.FRONTEND_URL) {
     throw appError(
@@ -102,16 +98,20 @@ if (env.IS_PRODUCTION) {
   }
 }
 
-//Configurations that work but are worth saying out loud. Warned rather than
-//thrown, because each is legitimate in development.
 export const envWarnings = (): string[] => {
   const warnings: string[] = [];
   if (!env.FRONTEND_URL) warnings.push('FRONTEND_URL is unset — CORS allows ANY origin.');
-  if (!env.RESEND_API_KEY) warnings.push('RESEND_API_KEY is unset — codes are logged, not emailed.');
+  if (!env.RESEND_API_KEY)
+    warnings.push('RESEND_API_KEY is unset — codes are logged, not emailed.');
   if (env.MAIL_FROM.endsWith('@resend.dev')) {
     warnings.push(
       'MAIL_FROM is the Resend test sender — mail reaches ONLY your own Resend address. ' +
         'Signup and new-device login work for nobody else until a domain is verified.'
+    );
+  }
+  if (env.MAIL_DEV_TO) {
+    warnings.push(
+      `MAIL_DEV_TO is set — EVERY code goes to ${env.MAIL_DEV_TO}, not to the account it is for.`
     );
   }
   return warnings;
