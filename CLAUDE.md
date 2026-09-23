@@ -120,7 +120,10 @@ the database after they ask for their account to be deleted.
   catch is what stops a raw stack trace reaching the API response.
 - **Errors carry a code** from `shared/errors.ts`. The app branches on the code,
   never the message — messages get translated and reworded. Throw with
-  `appError(ErrorCode.X, 'message')`.
+  `appError(ErrorCode.X, 'message')`. If the message means something narrower
+  than the code's entry in `shared/messages.ts`, add `{ reason: 'Y' }` and an
+  `X.Y` entry in every language — otherwise French, Swahili and Kirundi users
+  get the code's generic sentence, which may be the wrong reason.
 - **Every query on user data filters by the user.** `{ user: user._id }` — never
   trust an id on its own. This is what stops one account reading another's
   records.
@@ -182,6 +185,8 @@ it, response timing reveals which addresses have accounts.
 ESLint flat config runs Prettier as a rule, not a separate step. Single quotes,
 semicolons, 2-space indent, 100-char width, CRLF.
 
-Comments in this codebase explain **why** — a past bug, a deliberate tradeoff, a
-constraint from the target market. Match that when extending a file; do not add
-comments that restate what the code already says.
+Comments say what a function, field or step does, in one or two lines — e.g.
+`//Checks and consumes a code. Returns the device it was issued for.` No
+teaching or guidance ("never do X", "do not remove", "this used to…"), no
+section banners, no bug history. Rules for contributors live in this file;
+deploy steps live in DEPLOY.md.

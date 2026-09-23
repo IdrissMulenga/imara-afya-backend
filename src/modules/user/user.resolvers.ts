@@ -5,11 +5,6 @@ import type { IUser } from './user.model.js';
 import type { Context } from '../../shared/context.js';
 import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
 
-//USER RESOLVERS.
-//
-//Each one: check the caller is signed in, call the service, return. No logic
-//here — if you are writing an `if` about a rule, it belongs in the service.
-
 export const userResolvers = {
   Query: {
     me: async (_p: unknown, _a: unknown, context: Context) => {
@@ -41,11 +36,7 @@ export const userResolvers = {
       }
     },
 
-    deleteAccount: async (
-      _p: unknown,
-      args: { input: { password: string } },
-      context: Context
-    ) => {
+    deleteAccount: async (_p: unknown, args: { input: { password: string } }, context: Context) => {
       const caller = requireAuth(context);
       try {
         return await userService.deleteAccount(String(caller._id), args.input.password);
@@ -55,14 +46,10 @@ export const userResolvers = {
     },
   },
 
-  //FIELD RESOLVERS — only for fields not stored exactly as the app needs them.
   User: {
-    //_id is an ObjectId; GraphQL wants a string.
     id: (user: IUser) => String(user._id),
     birthDate: (user: IUser) => user.birthDate?.toISOString() ?? null,
     createdAt: (user: IUser) => user.createdAt.toISOString(),
-    //Worked out on the way out, so it can never disagree with the weight the
-    //user just logged.
     bmi: (user: IUser) => userService.calculateBMI(user.heightCm, user.weightKg),
   },
 };

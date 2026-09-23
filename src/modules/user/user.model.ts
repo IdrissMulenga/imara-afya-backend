@@ -1,10 +1,5 @@
 import { Schema, model, type Document, type Types } from 'mongoose';
 
-//THE USER.
-//
-//This interface describes one document. Services import `User` below and use
-//it directly — User.findOne(), user.save(). No wrapper, no repository.
-
 export interface IUser extends Document {
   _id: Types.ObjectId;
   email: string;
@@ -13,8 +8,7 @@ export interface IUser extends Document {
   emailVerified: boolean;
   emailVerifiedAt: Date | null;
 
-  //Every token carries the tokenVersion it was signed with. Bumping this
-  //number makes every older token fail — that is the whole logout mechanism.
+  //Incremented to invalidate every existing token.
   tokenVersion: number;
   failedPasswordAttempts: number;
 
@@ -27,8 +21,7 @@ export interface IUser extends Document {
 
   language: 'en' | 'fr' | 'sw' | 'rn';
   units: 'metric' | 'imperial';
-  //Pushed from the phone. Every "which day is it" decision reads this, never
-  //the server clock — the server is UTC and the user is not.
+  //IANA timezone used for all day calculations.
   timezone: string;
   cycleTrackingEnabled: boolean;
 
@@ -43,8 +36,6 @@ export interface IUser extends Document {
 
 const userSchema = new Schema<IUser>(
   {
-    //`unique` already builds the index. Adding `index: true` as well makes
-    //Mongoose log a duplicate-index warning on every single boot.
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
 
@@ -65,9 +56,6 @@ const userSchema = new Schema<IUser>(
     units: { type: String, enum: ['metric', 'imperial'], default: 'metric' },
     timezone: { type: String, default: 'Africa/Bujumbura' },
 
-    //A toggle the user sets, not something inferred from gender — that would
-    //make the assumption for them and leave anyone who stated no gender
-    //without a way to turn it on.
     cycleTrackingEnabled: { type: Boolean, default: false },
 
     waterGoalGlasses: { type: Number, default: 8, min: 1, max: 30 },

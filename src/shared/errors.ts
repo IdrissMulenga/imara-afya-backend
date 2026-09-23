@@ -1,10 +1,6 @@
 import { GraphQLError } from 'graphql';
 
-//ERRORS.
-//
-//The app branches on `code`, never on the message text — messages get
-//translated and reworded, codes stay put. Adding a case means adding a code
-//here first.
+//Error codes returned in extensions.code.
 
 export const ErrorCode = {
   EMAIL_TAKEN: 'EMAIL_TAKEN',
@@ -34,9 +30,7 @@ export const ErrorCode = {
   DEVICE_NOT_FOUND: 'DEVICE_NOT_FOUND',
   INVALID_DEVICE_ID: 'INVALID_DEVICE_ID',
 
-  //Boot-time only — the server exits before it can answer a request, so the
-  //app never receives this one. It is here so config failures carry a code
-  //like everything else.
+  //Startup configuration errors.
   CONFIG_ERROR: 'CONFIG_ERROR',
 
   BAD_USER_INPUT: 'BAD_USER_INPUT',
@@ -47,22 +41,18 @@ export const ErrorCode = {
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
 
-//Throw this anywhere. GraphQL understands it directly, so there is no
-//conversion step to remember.
+//Creates a GraphQL error with a code.
 export const appError = (
   code: ErrorCodeValue,
   message: string,
   extra?: Record<string, unknown>
 ): GraphQLError => new GraphQLError(message, { extensions: { code, ...extra } });
 
-//Wraps a resolver so an unexpected error is logged with its stack and the
-//caller gets a generic message. A raw stack trace in an API response is a free
-//map of the codebase for whoever is probing it.
+//Passes coded errors through; logs anything else and returns a generic INTERNAL error.
 export const handleError = (error: unknown, operation: string): GraphQLError => {
   if (error instanceof GraphQLError) return error;
 
-  //A unique index rejected the write. On users that is always the email index,
-  //which two simultaneous signups can genuinely hit.
+  //Duplicate key: the email is already registered.
   if (typeof error === 'object' && error !== null && 'code' in error) {
     if ((error as { code: number }).code === 11000) {
       return appError(ErrorCode.EMAIL_TAKEN, 'That email address is already registered.');

@@ -1,0 +1,11 @@
+# Line endings. .prettierrc.json says CRLF and eslint enforces it, so the
+# working copy must be CRLF on every machine regardless of core.autocrlf.
+# The repository itself still stores LF.
+* text=auto eol=crlf
+
+*.docx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.pdf binary

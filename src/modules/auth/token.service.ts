@@ -2,19 +2,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 
-//TOKENS.
-//
-//Two kinds, deliberately not interchangeable.
-//
-//SESSION token — authenticates every request. Carries `v` (the user's
-//tokenVersion when it was signed) and `o` (when the password was last typed).
-//
-//RESET token — only exists between proving a code and setting a new password.
-//It carries purpose: 'PASSWORD_RESET', which is checked on the way back in, so
-//a session token cannot be used to change a password without the old one.
-//
-//`algorithms: ['HS256']` on verify is not optional. Without it, an attacker
-//can hand back a token signed with "none" and have it accepted.
+//Signs and verifies session tokens and password-reset tokens.
 
 const ALGORITHM = 'HS256';
 
@@ -52,13 +40,7 @@ export const verifyToken = (token: string): SessionClaims => {
   }
 };
 
-//`v` is the user's tokenVersion at the moment the ticket was issued.
-//resetPassword bumps that number, so the ticket it just spent stops matching —
-//which is what makes a reset ticket single-use.
-//
-//WITHOUT IT the same ticket kept working for its full 15 minutes, so anyone who
-//captured one out of a log or a crash report could set another password AFTER
-//the real owner had already recovered the account.
+//Signs a password-reset ticket bound to the current tokenVersion.
 export const signResetToken = (userId: string, tokenVersion: number): string =>
   jwt.sign({ purpose: 'PASSWORD_RESET', v: tokenVersion }, env.JWT_SECRET, {
     algorithm: ALGORITHM,
@@ -79,21 +61,23 @@ export const verifyResetToken = (token: string): ResetClaims => {
       issuer: env.JWT_ISSUER,
     }) as jwt.JwtPayload;
 
-    //THIS CHECK IS THE WHOLE REASON RESET TOKENS ARE SEPARATE. Without it any
-    //valid session token would be permission to set a new password.
+    //Rejects anything that is not a reset token.
     if (payload.purpose !== 'PASSWORD_RESET' || !payload.sub || typeof payload.v !== 'number') {
-      throw appError(ErrorCode.INVALID_RESET_TOKEN, 'That reset link is not valid.');
+      throw appError(ErrorCode.INVALID_RESET_TOKEN, 'That reset link is not valid.', {
+        reason: 'INVALID',
+      });
     }
 
     return { userId: payload.sub, tokenVersion: payload.v };
   } catch {
-    throw appError(ErrorCode.INVALID_RESET_TOKEN, 'That reset request has expired. Please start again.');
+    throw appError(
+      ErrorCode.INVALID_RESET_TOKEN,
+      'That reset request has expired. Please start again.'
+    );
   }
 };
 
-//Enforced on refresh only. It stops a session being renewed forever — an
-//already-issued token still works until its own 7-day expiry, so this is a
-//refusal to extend, not a logout.
+//True when the original sign-in is older than MAX_SESSION_DAYS.
 export const isSessionTooOld = (origin: string): boolean => {
   const started = Date.parse(origin);
   if (Number.isNaN(started)) return true;

@@ -1,15 +1,10 @@
-//WHAT THE APP SENDS TO THE USER MODULE.
-//
-//Every field optional: these are patches. A field the app did not send must be
-//left alone, not overwritten.
-
+//Omitted fields are left unchanged; null clears birthDate, heightCm or weightKg.
 export interface UpdateProfileInput {
   name?: string;
-  photoUrl?: string;
   gender?: 'female' | 'male' | 'unspecified';
-  birthDate?: string;
-  heightCm?: number;
-  weightKg?: number;
+  birthDate?: string | null;
+  heightCm?: number | null;
+  weightKg?: number | null;
 }
 
 export interface PreferencesInput {

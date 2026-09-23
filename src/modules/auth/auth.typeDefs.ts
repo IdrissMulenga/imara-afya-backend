@@ -1,9 +1,3 @@
-//THE AUTH SCHEMA.
-//
-//This module owns signing up, signing in, codes, passwords and devices. The
-//User type itself belongs to the user module — AuthPayload just refers to it,
-//which works because all modules' typeDefs become one schema.
-
 export const authTypeDefs = /* GraphQL */ `
   type AuthPayload {
     token: String!
@@ -41,6 +35,8 @@ export const authTypeDefs = /* GraphQL */ `
     password: String!
     deviceId: String!
     deviceLabel: String
+    "The language chosen in the app; also used for the signup email."
+    language: Language
   }
 
   input LoginInput {

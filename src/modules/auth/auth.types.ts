@@ -1,12 +1,11 @@
 import type { IUser } from '../user/user.model.js';
 
-//WHAT THE APP SENDS, AND WHAT THE AUTH SERVICES RETURN.
-
 export interface SignUpInput {
   email: string;
   password: string;
   deviceId: string;
   deviceLabel?: string;
+  language?: 'en' | 'fr' | 'sw' | 'rn';
 }
 
 export interface LoginInput {
@@ -39,15 +38,12 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
-//--- results ---
-
 export interface AuthPayload {
   token: string;
   user: IUser;
 }
 
-//Returned by login when the phone is not trusted. Note: NO token — the
-//password was proved, possession of the inbox was not.
+//Returned by login on an untrusted device: a code was sent, no token yet.
 export interface OtpChallenge {
   challenge: true;
   purpose: 'LOGIN';
@@ -57,7 +53,6 @@ export interface OtpChallenge {
 
 export type LoginResult = AuthPayload | OtpChallenge;
 
-//Lets the resolver tell GraphQL which of the two it got back.
 export const isAuthPayload = (result: LoginResult): result is AuthPayload => 'token' in result;
 
 export interface ResetTicket {
