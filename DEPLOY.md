@@ -62,6 +62,14 @@ Connection string goes in `MONGODB_URI`, including the database name:
 mongodb+srv://USER:PASSWORD@cluster.xxxxx.mongodb.net/imara-afya?retryWrites=true&w=majority
 ```
 
+**Existing databases only:** the OTP TTL index moved from `expiresAt` to `purgeAt`.
+Mongo does not drop the old index on its own, so run this once or OTP rows are
+deleted too early and the hourly resend cap stops working:
+
+```
+db.otps.dropIndex('expiresAt_1')
+```
+
 ---
 
 ## 3. Environment variables

@@ -1,69 +1,58 @@
-import app from './app.js';
-import { connectDB, disconnectDB } from "./config/db.js"
-import { envConf } from './config/envConf.js';
-import { assertPurgeCoverage } from './services/accountService.js';
+import type { Server } from 'node:http';
+import { env, envWarnings } from './config/env.js';
+import { connectDB, disconnectDB } from './config/db.js';
+import { createApp } from './app.js';
 
+//Connects to the database, then starts the HTTP server.
 
-const startServer = async () => {
-    try {
-        //Importing app.js above has registered every model, so this can now see
-        //them all. It throws if any collection holding user data would survive
-        //an account deletion — better to refuse to start than to promise
-        //someone their data is gone and leave it there.
-        assertPurgeCoverage()
+const start = async (): Promise<void> => {
+  for (const warning of envWarnings()) {
+    console.warn(`[config] ${warning}`);
+  }
 
-        await connectDB()
+  await connectDB();
 
-        const server = app.listen(envConf.PORT, () => {
-            console.log(`server started at port ${envConf.PORT}.......`)
-        })
+  const app = createApp();
+  const server: Server = app.listen(env.PORT, () => {
+    console.log(`[server] listening on ${env.PORT} (${env.NODE_ENV})`);
+  });
 
-        //GRACEFUL SHUTDOWN — hosting platforms send SIGTERM before replacing an
-        //instance. Without this, requests in flight during a deploy are dropped
-        //and a user sees a failure for something that actually worked.
-        //A second signal while the first shutdown is draining would call
-        //server.close() twice — the second callback never fires, so the Mongo
-        //pool is closed from under requests that are still finishing.
-        let shuttingDown = false
+  //Graceful shutdown: stop accepting requests, drain, then close the database.
+  let shuttingDown = false;
 
-        const shutdown = async (signal: string) => {
-            if (shuttingDown) return
+  const shutdown = async (signal: string): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[server] shutting down (${signal})`);
 
-            shuttingDown = true
+    const forceExit = setTimeout(() => {
+      console.error('[server] shutdown timed out, exiting');
+      process.exit(1);
+    }, 10_000);
+    forceExit.unref();
 
-            console.log(`${signal} received, shutting down......`)
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await disconnectDB();
 
-            server.close(async () => {
-                await disconnectDB()
-                process.exit(0)
-            })
+    clearTimeout(forceExit);
+    console.log('[server] stopped');
+    process.exit(0);
+  };
 
-            //don't wait forever for a stuck connection to drain
-            setTimeout(() => {
-                console.error('Forced shutdown after timeout')
-                process.exit(1)
-            }, 10_000).unref()
-        }
+  process.on('SIGTERM', () => void shutdown('SIGTERM'));
+  process.on('SIGINT', () => void shutdown('SIGINT'));
 
-        process.on('SIGTERM', () => shutdown('SIGTERM'))
-        process.on('SIGINT', () => shutdown('SIGINT'))
+  process.on('unhandledRejection', (reason) => {
+    console.error('[server] unhandled rejection:', reason);
+  });
 
-        //A rejected promise nobody awaited is a bug worth seeing, but not worth
-        //dropping every in-flight request over — most of ours come from a
-        //single failed query, and the resolver already answered with an error.
-        //An uncaught EXCEPTION is different: the process state is unknown after
-        //one, so that path below does shut down.
-        process.on('unhandledRejection', (reason) => {
-            console.error('UNHANDLED_REJECTION:', reason)
-        })
+  process.on('uncaughtException', (error) => {
+    console.error('[server] uncaught exception:', error);
+    process.exit(1);
+  });
+};
 
-        process.on('uncaughtException', (error) => {
-            console.error('UNCAUGHT_EXCEPTION:', error)
-            shutdown('uncaughtException')
-        })
-    } catch (error: any) {
-        console.log('Error starting server:', error.message);
-    }
-}
-
-startServer()
+start().catch((error) => {
+  console.error('[server] failed to start:', error);
+  process.exit(1);
+});
