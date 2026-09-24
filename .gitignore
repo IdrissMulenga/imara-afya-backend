@@ -1,0 +1,21 @@
+/node_modules
+.env
+.env.*
+!.env_sample
+/dist
+imara-afya.postman_collection.json
+
+# scratch files used to print the assembled GraphQL schema
+_sdl_check.mjs
+.sdlcheck.mjs
+
+# logs and OS noise
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+pnpm-lock.yaml
+
+# Uploaded avatars. User data, never source — and it must be a mounted volume
+# in production or every deploy loses everyone photo.
+uploads/

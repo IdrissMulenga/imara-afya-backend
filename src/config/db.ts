@@ -1,34 +1,30 @@
-import mongoose from "mongoose";
-import { envConf } from './envConf.js';
+import mongoose from 'mongoose';
+import { env } from './env.js';
 
-export const connectDB = async () => {
-    try {
-        await mongoose.connect(envConf.MONGODB_URI, {
-            //Atlas counts connections against the cluster limit, so cap the pool
-            //rather than letting mongoose open its default 100 per instance
-            maxPoolSize: envConf.DB_POOL_SIZE,
-            minPoolSize: 1,
-            //fail fast instead of hanging a request for 30s when the cluster is
-            //unreachable — the app can show an error far sooner
-            serverSelectionTimeoutMS: 8000,
-            socketTimeoutMS: 45000,
-        })
+mongoose.set('strictQuery', true);
 
-        console.log("Mongodb connected......")
-    } catch (error) {
-        console.error('MongoDB connection error:', error);
-        process.exit(1);
-    }
-}
+//Queries fail immediately while disconnected instead of queueing.
+mongoose.set('bufferCommands', false);
 
+export const connectDB = async (): Promise<void> => {
+  mongoose.connection.on('error', (e) => console.error('[db] error:', String(e)));
+  mongoose.connection.on('disconnected', () => console.warn('[db] disconnected'));
+  mongoose.connection.on('reconnected', () => console.log('[db] reconnected'));
 
-//close the pool on shutdown so in-flight writes finish and Atlas frees the
-//connections straight away instead of waiting for them to time out
-export const disconnectDB = async () => {
-    try {
-        await mongoose.connection.close();
-        console.log("Mongodb connection closed......")
-    } catch (error) {
-        console.error('MongoDB disconnect error:', error);
-    }
-}
+  await mongoose.connect(env.MONGODB_URI, {
+    maxPoolSize: env.DB_POOL_SIZE,
+    serverSelectionTimeoutMS: 10_000,
+    socketTimeoutMS: 45_000,
+  });
+
+  console.log(`[db] connected (pool: ${env.DB_POOL_SIZE})`);
+};
+
+//Closes the connection, letting in-flight queries finish.
+export const disconnectDB = async (): Promise<void> => {
+  await mongoose.connection.close(false);
+  console.log('[db] closed');
+};
+
+//True when connected. Used by /health.
+export const isDBReady = (): boolean => mongoose.connection.readyState === 1;
