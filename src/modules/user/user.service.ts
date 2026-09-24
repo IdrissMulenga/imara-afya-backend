@@ -4,8 +4,8 @@ import { User, type IUser } from './user.model.js';
 import { Otp, Device } from '../auth/index.js';
 import { clearAvatar } from '../upload/avatar.service.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
-import { cleanText, checkTimezone } from '../../shared/validation.js';
-import { fieldName, type Field } from '../../shared/messages.js';
+import { cleanText, checkTimezone, inRange } from '../../shared/validation.js';
+import { HabitLog } from '../habit/index.js';
 import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
 
 //Loads a user or throws ACCOUNT_NOT_FOUND.
@@ -13,16 +13,6 @@ export const getUser = async (id: string): Promise<IUser> => {
   const user = await User.findById(id);
   if (!user) throw appError(ErrorCode.ACCOUNT_NOT_FOUND, 'That account no longer exists.');
   return user;
-};
-
-const inRange = (value: number, min: number, max: number, field: Field): number => {
-  if (!Number.isFinite(value) || value < min || value > max) {
-    throw appError(ErrorCode.BAD_USER_INPUT, `${fieldName(field)} is out of range.`, {
-      reason: 'OUT_OF_RANGE',
-      field,
-    });
-  }
-  return value;
 };
 
 export const updateProfile = async (userId: string, input: UpdateProfileInput): Promise<IUser> => {
@@ -75,7 +65,7 @@ export const setPreferences = async (userId: string, input: PreferencesInput): P
 };
 
 //Collections deleted along with the account.
-const USER_OWNED: Model<{ user: unknown }>[] = [Otp, Device] as unknown as Model<{
+const USER_OWNED: Model<{ user: unknown }>[] = [Otp, Device, HabitLog] as unknown as Model<{
   user: unknown;
 }>[];
 

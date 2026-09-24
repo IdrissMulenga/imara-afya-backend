@@ -140,7 +140,7 @@ export const verifyCode = async (params: {
     const counted = await Otp.findOneAndUpdate(
       { _id: otp._id },
       { $inc: { attempts: 1 } },
-      { new: true, projection: { attempts: 1 } }
+      { returnDocument: 'after', projection: { attempts: 1 } }
     ).lean();
 
     const attempts = counted?.attempts ?? otp.attempts + 1;
