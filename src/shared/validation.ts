@@ -7,6 +7,17 @@ const CONTROL_CHARS = new RegExp('[\\x00-\\x1F\\x7F]', 'g');
 export const PASSWORD_MIN = 8;
 export const PASSWORD_MAX = 128;
 
+//Throws OUT_OF_RANGE unless value is a finite number within [min, max].
+export const inRange = (value: number, min: number, max: number, field: Field): number => {
+  if (!Number.isFinite(value) || value < min || value > max) {
+    throw appError(ErrorCode.BAD_USER_INPUT, `${fieldName(field)} is out of range.`, {
+      reason: 'OUT_OF_RANGE',
+      field,
+    });
+  }
+  return value;
+};
+
 //Trims, lowercases and validates an email.
 export const normalizeEmail = (raw: string): string => {
   const email = raw.trim().toLowerCase();

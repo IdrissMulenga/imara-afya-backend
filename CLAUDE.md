@@ -73,6 +73,10 @@ src/
       auth.typeDefs.ts
       auth.resolvers.ts
       index.ts
+    habit/              daily water, steps and sleep; streaks against the profile goals
+      habit.model.ts    one HabitLog per user per day (day = YYYY-MM-DD in user's tz)
+      habit.service.ts  logHabits, addWater, summary, history
+      ...
 
   schema.ts             builds the executable schema from modules/index.ts
   app.ts                the express pipeline

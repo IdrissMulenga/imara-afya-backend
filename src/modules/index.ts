@@ -1,7 +1,8 @@
 import * as user from './user/index.js';
 import * as auth from './auth/index.js';
+import * as habit from './habit/index.js';
 
-const modules = [user, auth];
+const modules = [user, auth, habit];
 
 //Base Query and Mutation types; each module extends them.
 const baseTypeDefs = /* GraphQL */ `

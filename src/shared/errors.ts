@@ -52,9 +52,10 @@ export const appError = (
 export const handleError = (error: unknown, operation: string): GraphQLError => {
   if (error instanceof GraphQLError) return error;
 
-  //Duplicate key: the email is already registered.
+  //Duplicate key on the users' email index: the email is already registered.
   if (typeof error === 'object' && error !== null && 'code' in error) {
-    if ((error as { code: number }).code === 11000) {
+    const duplicate = error as { code: number; keyPattern?: Record<string, unknown> };
+    if (duplicate.code === 11000 && duplicate.keyPattern && 'email' in duplicate.keyPattern) {
       return appError(ErrorCode.EMAIL_TAKEN, 'That email address is already registered.');
     }
   }
