@@ -6,6 +6,7 @@ import { clearAvatar } from '../upload/avatar.service.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { cleanText, checkTimezone, inRange } from '../../shared/validation.js';
 import { HabitLog } from '../habit/index.js';
+import { CheckIn } from '../checkin/index.js';
 import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
 
 //Loads a user or throws ACCOUNT_NOT_FOUND.
@@ -65,7 +66,12 @@ export const setPreferences = async (userId: string, input: PreferencesInput): P
 };
 
 //Collections deleted along with the account.
-const USER_OWNED: Model<{ user: unknown }>[] = [Otp, Device, HabitLog] as unknown as Model<{
+const USER_OWNED: Model<{ user: unknown }>[] = [
+  Otp,
+  Device,
+  HabitLog,
+  CheckIn,
+] as unknown as Model<{
   user: unknown;
 }>[];
 

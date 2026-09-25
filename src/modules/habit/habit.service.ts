@@ -1,8 +1,8 @@
 import type { IUser } from '../user/index.js';
 import { HabitLog, type IHabitLog } from './habit.model.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
-import { inRange } from '../../shared/validation.js';
-import { addDays, dayInZone, daysBetween, streakLength } from '../../shared/datetime.js';
+import { inRange, resolveDay } from '../../shared/validation.js';
+import { addDays, dayInZone, streakLength } from '../../shared/datetime.js';
 import type { AddWaterInput, HabitDay, HabitSummary, LogHabitsInput } from './habit.types.js';
 
 const MAX_WATER = 50;
@@ -16,35 +16,7 @@ const STREAK_WINDOW_DAYS = 365;
 const HISTORY_DEFAULT_DAYS = 7;
 const HISTORY_MAX_DAYS = 90;
 
-const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
 const round2 = (value: number): number => Math.round(value * 100) / 100;
-
-//Today in the user's timezone, or the given day after checking it is a real,
-//past-or-present day within MAX_BACKDATE_DAYS.
-export const resolveDay = (raw: string | null | undefined, timezone: string): string => {
-  const today = dayInZone(new Date(), timezone);
-  const day = raw?.trim();
-  if (!day) return today;
-
-  const parsed = Date.parse(`${day}T12:00:00Z`);
-  if (!DAY_PATTERN.test(day) || Number.isNaN(parsed) || addDays(day, 0) !== day) {
-    throw appError(ErrorCode.BAD_USER_INPUT, 'That date is not valid.', { reason: 'INVALID_DAY' });
-  }
-  if (day > today) {
-    throw appError(ErrorCode.BAD_USER_INPUT, 'You cannot log a day that has not happened yet.', {
-      reason: 'FUTURE_DAY',
-    });
-  }
-  if (daysBetween(day, today) > MAX_BACKDATE_DAYS) {
-    throw appError(
-      ErrorCode.BAD_USER_INPUT,
-      `You can only log the last ${MAX_BACKDATE_DAYS} days.`,
-      { reason: 'DAY_TOO_OLD', maxDays: MAX_BACKDATE_DAYS }
-    );
-  }
-  return day;
-};
 
 const toHabitDay = (
   day: string,
@@ -58,7 +30,7 @@ const toHabitDay = (
 
 //Sets the given values for one day, creating the day if needed.
 export const logHabits = async (user: IUser, input: LogHabitsInput): Promise<HabitDay> => {
-  const day = resolveDay(input.day, user.timezone);
+  const day = resolveDay(input.day, user.timezone, MAX_BACKDATE_DAYS);
 
   const set: Partial<Record<'waterGlasses' | 'steps' | 'sleepHours', number>> = {};
   if (input.waterGlasses != null) {
@@ -88,7 +60,7 @@ export const logHabits = async (user: IUser, input: LogHabitsInput): Promise<Hab
 
 //Adds glasses of water to one day (negative removes), kept within 0..MAX_WATER.
 export const addWater = async (user: IUser, input: AddWaterInput): Promise<HabitDay> => {
-  const day = resolveDay(input.day, user.timezone);
+  const day = resolveDay(input.day, user.timezone, MAX_BACKDATE_DAYS);
   const delta = input.glasses;
   if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > MAX_WATER) {
     throw appError(ErrorCode.BAD_USER_INPUT, 'Water is out of range.', {
