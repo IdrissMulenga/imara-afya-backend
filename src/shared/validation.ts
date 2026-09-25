@@ -1,7 +1,9 @@
 import { appError, ErrorCode } from './errors.js';
 import { fieldName, type Field } from './messages.js';
+import { addDays, dayInZone, daysBetween } from './datetime.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CONTROL_CHARS = new RegExp('[\\x00-\\x1F\\x7F]', 'g');
 
 export const PASSWORD_MIN = 8;
@@ -94,6 +96,35 @@ export const cleanText = (raw: string, maxLength: number, field: Field): string 
     });
   }
   return text;
+};
+
+//Today in the user's timezone, or the given day after checking it is a real,
+//past-or-present day at most maxBackdateDays ago.
+export const resolveDay = (
+  raw: string | null | undefined,
+  timezone: string,
+  maxBackdateDays: number
+): string => {
+  const today = dayInZone(new Date(), timezone);
+  const day = raw?.trim();
+  if (!day) return today;
+
+  const parsed = Date.parse(`${day}T12:00:00Z`);
+  if (!DAY_PATTERN.test(day) || Number.isNaN(parsed) || addDays(day, 0) !== day) {
+    throw appError(ErrorCode.BAD_USER_INPUT, 'That date is not valid.', { reason: 'INVALID_DAY' });
+  }
+  if (day > today) {
+    throw appError(ErrorCode.BAD_USER_INPUT, 'You cannot log a day that has not happened yet.', {
+      reason: 'FUTURE_DAY',
+    });
+  }
+  if (daysBetween(day, today) > maxBackdateDays) {
+    throw appError(ErrorCode.BAD_USER_INPUT, `You can only log the last ${maxBackdateDays} days.`, {
+      reason: 'DAY_TOO_OLD',
+      maxDays: maxBackdateDays,
+    });
+  }
+  return day;
 };
 
 //Masks an email for display: jane.doe@gmail.com -> j****e@gmail.com

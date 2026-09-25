@@ -77,6 +77,8 @@ src/
       habit.model.ts    one HabitLog per user per day (day = YYYY-MM-DD in user's tz)
       habit.service.ts  logHabits, addWater, summary, history
       ...
+    checkin/            daily mood and energy (1-5) with a note; streak and 7/30-day averages
+      checkin.model.ts  one CheckIn per user per day
 
   schema.ts             builds the executable schema from modules/index.ts
   app.ts                the express pipeline

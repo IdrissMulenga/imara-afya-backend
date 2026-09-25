@@ -253,6 +253,9 @@ export const FIELDS = {
   water: { en: 'Water', fr: 'Eau', sw: 'Maji', rn: 'Amazi' },
   steps: { en: 'Steps', fr: 'Pas', sw: 'Hatua', rn: 'Intambwe' },
   sleep: { en: 'Sleep', fr: 'Sommeil', sw: 'Usingizi', rn: 'Ibitotsi' },
+  mood: { en: 'Mood', fr: 'Humeur', sw: 'Hali ya moyo', rn: 'Ingene wiyumva' },
+  energy: { en: 'Energy', fr: 'Énergie', sw: 'Nguvu', rn: 'Inguvu' },
+  note: { en: 'Note', fr: 'Note', sw: 'Maelezo', rn: 'Icandiko' },
   deviceName: {
     en: 'Device name',
     fr: 'Nom de l’appareil',
