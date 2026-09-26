@@ -30,6 +30,10 @@ Create a `.env` with the variables read in `src/config/env.ts` first. `MONGODB_U
 required — `src/config/env.ts` throws without them, deliberately, so a
 misconfigured deploy never opens its port.
 
+Development uses the local MongoDB (`mongodb://localhost:27017/imara-afya`, open it in
+Compass); production uses MongoDB Atlas, set as `MONGODB_URI` on Render. The server
+refuses a local database in production and warns when development points at a remote one.
+
 ## Structure
 
 A modular monolith. One process, one database — but the code is grouped by

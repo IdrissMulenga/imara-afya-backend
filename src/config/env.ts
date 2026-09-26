@@ -40,6 +40,10 @@ const secret = (key: string): string => {
   return value;
 };
 
+//True when the database runs on this computer (the local MongoDB seen in Compass).
+export const isLocalDatabase = (uri: string): boolean =>
+  /^mongodb:\/\/([^@/]*@)?(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|\?|$)/i.test(uri);
+
 const NODE_ENV = optional('NODE_ENV', 'development');
 
 export const env = {
@@ -84,6 +88,12 @@ export const env = {
 
 //Settings required in production.
 if (env.IS_PRODUCTION) {
+  if (isLocalDatabase(env.MONGODB_URI)) {
+    throw appError(
+      ErrorCode.CONFIG_ERROR,
+      'MONGODB_URI points at a local database in production — set it to the MongoDB Atlas connection string.'
+    );
+  }
   if (!env.FRONTEND_URL) {
     throw appError(
       ErrorCode.CONFIG_ERROR,
@@ -101,6 +111,11 @@ if (env.IS_PRODUCTION) {
 //Settings that are allowed but probably wrong, printed at startup.
 export const envWarnings = (): string[] => {
   const warnings: string[] = [];
+  if (!env.IS_PRODUCTION && !isLocalDatabase(env.MONGODB_URI)) {
+    warnings.push(
+      'MONGODB_URI is a remote database (Atlas) in development — test data goes to the real database.'
+    );
+  }
   if (!env.FRONTEND_URL) warnings.push('FRONTEND_URL is unset — CORS allows ANY origin.');
   if (!env.RESEND_API_KEY)
     warnings.push('RESEND_API_KEY is unset — codes are logged, not emailed.');

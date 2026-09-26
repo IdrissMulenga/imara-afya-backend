@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { env } from './env.js';
+import { env, isLocalDatabase } from './env.js';
 
 mongoose.set('strictQuery', true);
 
@@ -18,7 +18,9 @@ export const connectDB = async (): Promise<void> => {
     socketTimeoutMS: 45_000,
   });
 
-  console.log(`[db] connected (pool: ${env.DB_POOL_SIZE})`);
+  const { host, name } = mongoose.connection;
+  const where = isLocalDatabase(env.MONGODB_URI) ? 'local' : 'remote';
+  console.log(`[db] connected to ${where} database ${name} on ${host} (pool: ${env.DB_POOL_SIZE})`);
 };
 
 //Closes the connection, letting in-flight queries finish.
