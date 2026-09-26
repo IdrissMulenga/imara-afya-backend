@@ -15,19 +15,6 @@ export const dayInZone = (instant: Date, timezone: string): string => {
   return `${get('year')}-${get('month')}-${get('day')}`;
 };
 
-//Minutes since local midnight in a timezone.
-export const minutesInZone = (instant: Date, timezone: string): number => {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(instant);
-
-  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
-  return get('hour') * 60 + get('minute');
-};
-
 //Adds (or subtracts) days from a YYYY-MM-DD string.
 export const addDays = (day: string, count: number): string => {
   const base = new Date(`${day}T12:00:00Z`);
@@ -35,6 +22,7 @@ export const addDays = (day: string, count: number): string => {
   return base.toISOString().slice(0, 10);
 };
 
+//Whole days from one YYYY-MM-DD to another (negative when to is earlier).
 export const daysBetween = (from: string, to: string): number =>
   Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / DAY_MS);
 
@@ -53,7 +41,9 @@ export const streakLength = (days: Iterable<string>, today: string): number => {
   return count;
 };
 
+//Instants relative to now.
 export const minutesFromNow = (minutes: number): Date => new Date(Date.now() + minutes * 60_000);
 export const daysFromNow = (days: number): Date => new Date(Date.now() + days * DAY_MS);
 export const secondsSince = (instant: Date): number =>
   Math.floor((Date.now() - instant.getTime()) / 1000);
+export const daysSince = (instant: Date): number => (Date.now() - instant.getTime()) / DAY_MS;

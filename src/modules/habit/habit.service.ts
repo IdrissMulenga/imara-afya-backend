@@ -3,6 +3,8 @@ import { HabitLog, type IHabitLog } from './habit.model.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { inRange, resolveDay } from '../../shared/validation.js';
 import { addDays, dayInZone, streakLength } from '../../shared/datetime.js';
+import { countOr, roundTo } from '../../shared/numbers.js';
+import { upsertWithRetry } from '../../shared/upsert.js';
 import type { AddWaterInput, HabitDay, HabitSummary, LogHabitsInput } from './habit.types.js';
 
 const MAX_WATER = 50;
@@ -15,8 +17,6 @@ const MAX_BACKDATE_DAYS = 30;
 const STREAK_WINDOW_DAYS = 365;
 const HISTORY_DEFAULT_DAYS = 7;
 const HISTORY_MAX_DAYS = 90;
-
-const round2 = (value: number): number => Math.round(value * 100) / 100;
 
 const toHabitDay = (
   day: string,
@@ -34,11 +34,11 @@ export const logHabits = async (user: IUser, input: LogHabitsInput): Promise<Hab
 
   const set: Partial<Record<'waterGlasses' | 'steps' | 'sleepHours', number>> = {};
   if (input.waterGlasses != null) {
-    set.waterGlasses = round2(inRange(input.waterGlasses, 0, MAX_WATER, 'water'));
+    set.waterGlasses = roundTo(inRange(input.waterGlasses, 0, MAX_WATER, 'water'), 2);
   }
   if (input.steps != null) set.steps = Math.round(inRange(input.steps, 0, MAX_STEPS, 'steps'));
   if (input.sleepHours != null) {
-    set.sleepHours = round2(inRange(input.sleepHours, 0, MAX_SLEEP, 'sleep'));
+    set.sleepHours = roundTo(inRange(input.sleepHours, 0, MAX_SLEEP, 'sleep'), 2);
   }
 
   if (Object.keys(set).length === 0) {
@@ -49,11 +49,13 @@ export const logHabits = async (user: IUser, input: LogHabitsInput): Promise<Hab
   const defaults = { waterGlasses: 0, steps: 0, sleepHours: 0 };
   const setOnInsert = Object.fromEntries(Object.entries(defaults).filter(([key]) => !(key in set)));
 
-  const saved = await HabitLog.findOneAndUpdate(
-    { user: user._id, day },
-    { $set: set, $setOnInsert: setOnInsert },
-    { upsert: true, returnDocument: 'after', runValidators: true }
-  ).lean();
+  const saved = await upsertWithRetry(() =>
+    HabitLog.findOneAndUpdate(
+      { user: user._id, day },
+      { $set: set, $setOnInsert: setOnInsert },
+      { upsert: true, returnDocument: 'after', runValidators: true }
+    ).lean()
+  );
 
   return toHabitDay(day, saved);
 };
@@ -69,25 +71,29 @@ export const addWater = async (user: IUser, input: AddWaterInput): Promise<Habit
     });
   }
 
-  //One atomic pipeline update, so concurrent taps are all counted and the
-  //total can never go below 0 or above MAX_WATER.
-  const saved = await HabitLog.findOneAndUpdate(
-    { user: user._id, day },
-    [
-      {
-        $set: {
-          waterGlasses: {
-            $min: [MAX_WATER, { $max: [0, { $add: [{ $ifNull: ['$waterGlasses', 0] }, delta] }] }],
+  //One atomic update: concurrent taps all count and the total stays within 0..MAX_WATER.
+  const saved = await upsertWithRetry(() =>
+    HabitLog.findOneAndUpdate(
+      { user: user._id, day },
+      [
+        {
+          $set: {
+            waterGlasses: {
+              $min: [
+                MAX_WATER,
+                { $max: [0, { $add: [{ $ifNull: ['$waterGlasses', 0] }, delta] }] },
+              ],
+            },
+            steps: { $ifNull: ['$steps', 0] },
+            sleepHours: { $ifNull: ['$sleepHours', 0] },
+            createdAt: { $ifNull: ['$createdAt', '$$NOW'] },
+            updatedAt: '$$NOW',
           },
-          steps: { $ifNull: ['$steps', 0] },
-          sleepHours: { $ifNull: ['$sleepHours', 0] },
-          createdAt: { $ifNull: ['$createdAt', '$$NOW'] },
-          updatedAt: '$$NOW',
         },
-      },
-    ],
-    { upsert: true, returnDocument: 'after', updatePipeline: true, timestamps: false }
-  ).lean();
+      ],
+      { upsert: true, returnDocument: 'after', updatePipeline: true, timestamps: false }
+    ).lean()
+  );
 
   return toHabitDay(day, saved);
 };
@@ -125,10 +131,7 @@ export const getSummary = async (user: IUser): Promise<HabitSummary> => {
 
 //The last `days` days, newest first, with empty days filled in as zeros.
 export const getHistory = async (user: IUser, days?: number | null): Promise<HabitDay[]> => {
-  const count =
-    days == null || !Number.isFinite(days)
-      ? HISTORY_DEFAULT_DAYS
-      : Math.min(HISTORY_MAX_DAYS, Math.max(1, Math.floor(days)));
+  const count = countOr(days, HISTORY_DEFAULT_DAYS, HISTORY_MAX_DAYS);
 
   const today = dayInZone(new Date(), user.timezone);
   const oldest = addDays(today, -(count - 1));

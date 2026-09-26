@@ -15,4 +15,8 @@ export interface PreferencesInput {
   waterGoalGlasses?: number;
   stepGoal?: number;
   sleepGoalHours?: number;
+  sleepBedtime?: string | null;
+  sleepWakeTime?: string | null;
+  sleepWeekendBedtime?: string | null;
+  sleepWeekendWakeTime?: string | null;
 }

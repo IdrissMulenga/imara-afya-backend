@@ -1,10 +1,20 @@
 import type { Request, Response, NextFunction } from 'express';
 import type { Plugin } from 'graphql-yoga';
 import { createHash } from 'node:crypto';
-import { GraphQLError, getOperationAST, Kind, type ArgumentNode, type ValueNode } from 'graphql';
+import {
+  GraphQLError,
+  getOperationAST,
+  Kind,
+  type ArgumentNode,
+  type DocumentNode,
+  type FieldNode,
+  type FragmentDefinitionNode,
+  type SelectionSetNode,
+  type ValueNode,
+} from 'graphql';
 import { env } from '../../config/env.js';
 import { ErrorCode } from '../errors.js';
-import { translate } from '../messages.js';
+import { sendError } from '../http.js';
 import type { Context } from '../context.js';
 
 //In-memory rate-limit counters (per process).
@@ -59,16 +69,13 @@ export const ipRateLimitFor =
 
     if (!result.allowed) {
       res.setHeader('Retry-After', String(result.retryAfterSeconds));
-      const extensions = {
-        code: ErrorCode.RATE_LIMITED,
-        retryAfterSeconds: result.retryAfterSeconds,
-      };
-      const message = translate(
-        'Too many requests. Please slow down.',
-        extensions,
-        req.headers['accept-language']
+      sendError(
+        req,
+        res,
+        429,
+        { code: ErrorCode.RATE_LIMITED, retryAfterSeconds: result.retryAfterSeconds },
+        'Too many requests. Please slow down.'
       );
-      res.status(429).json({ errors: [{ message, extensions }] });
       return;
     }
 
@@ -84,10 +91,22 @@ const DAY = 24 * HOUR;
 //Limit multiplier outside production.
 const RELAX = env.IS_PRODUCTION ? 1 : 20;
 
+type Budget = { windowMs: number; max: number };
 type Rule = {
-  budgets: { windowMs: number; max: number }[];
+  budgets: Budget[];
   keyBy: 'user' | 'ip' | 'ip+email';
 };
+
+//Sending a code: one a minute, three an hour.
+const CODE_SENDS: Budget[] = [
+  { windowMs: MINUTE, max: 1 },
+  { windowMs: HOUR, max: 3 },
+];
+//Checking a code: five a minute, twenty an hour.
+const CODE_CHECKS: Budget[] = [
+  { windowMs: MINUTE, max: 5 },
+  { windowMs: HOUR, max: 20 },
+];
 
 //Per-operation limits; every budget must pass. Unlisted fields use
 //DEFAULT_READ / DEFAULT_WRITE.
@@ -107,56 +126,14 @@ const RULES: Record<string, Rule> = {
     ],
   },
 
-  verifyEmailOtp: {
-    keyBy: 'user',
-    budgets: [
-      { windowMs: MINUTE, max: 5 },
-      { windowMs: HOUR, max: 20 },
-    ],
-  },
-  verifyLoginOtp: {
-    keyBy: 'ip+email',
-    budgets: [
-      { windowMs: MINUTE, max: 5 },
-      { windowMs: HOUR, max: 20 },
-    ],
-  },
-  verifyPasswordResetOtp: {
-    keyBy: 'ip+email',
-    budgets: [
-      { windowMs: MINUTE, max: 5 },
-      { windowMs: HOUR, max: 20 },
-    ],
-  },
+  verifyEmailOtp: { keyBy: 'user', budgets: CODE_CHECKS },
+  verifyLoginOtp: { keyBy: 'ip+email', budgets: CODE_CHECKS },
+  verifyPasswordResetOtp: { keyBy: 'ip+email', budgets: CODE_CHECKS },
 
-  resendEmailOtp: {
-    keyBy: 'user',
-    budgets: [
-      { windowMs: MINUTE, max: 1 },
-      { windowMs: HOUR, max: 3 },
-    ],
-  },
-  resendLoginOtp: {
-    keyBy: 'ip+email',
-    budgets: [
-      { windowMs: MINUTE, max: 1 },
-      { windowMs: HOUR, max: 3 },
-    ],
-  },
-  requestPasswordReset: {
-    keyBy: 'ip+email',
-    budgets: [
-      { windowMs: MINUTE, max: 1 },
-      { windowMs: HOUR, max: 3 },
-    ],
-  },
-  resendPasswordResetOtp: {
-    keyBy: 'ip+email',
-    budgets: [
-      { windowMs: MINUTE, max: 1 },
-      { windowMs: HOUR, max: 3 },
-    ],
-  },
+  resendEmailOtp: { keyBy: 'user', budgets: CODE_SENDS },
+  resendLoginOtp: { keyBy: 'ip+email', budgets: CODE_SENDS },
+  requestPasswordReset: { keyBy: 'ip+email', budgets: CODE_SENDS },
+  resendPasswordResetOtp: { keyBy: 'ip+email', budgets: CODE_SENDS },
 
   resetPassword: {
     keyBy: 'ip',
@@ -221,6 +198,27 @@ const emailFromArgs = (
   return undefined;
 };
 
+//The operation's top-level fields, including those inside fragments and inline fragments.
+const topLevelFields = (
+  set: SelectionSetNode,
+  document: DocumentNode,
+  seen = new Set<string>()
+): FieldNode[] =>
+  set.selections.flatMap((selection) => {
+    if (selection.kind === Kind.FIELD) return [selection];
+    if (selection.kind === Kind.INLINE_FRAGMENT) {
+      return topLevelFields(selection.selectionSet, document, seen);
+    }
+    const name = selection.name.value;
+    if (seen.has(name)) return [];
+    seen.add(name);
+    const fragment = document.definitions.find(
+      (d): d is FragmentDefinitionNode =>
+        d.kind === Kind.FRAGMENT_DEFINITION && d.name.value === name
+    );
+    return fragment ? topLevelFields(fragment.selectionSet, document, seen) : [];
+  });
+
 export const operationLimitPlugin: Plugin<Context> = {
   onExecute({ args, setResultAndStopExecution }) {
     const context = args.contextValue;
@@ -229,9 +227,7 @@ export const operationLimitPlugin: Plugin<Context> = {
 
     const isMutation = operation.operation === 'mutation';
 
-    for (const selection of operation.selectionSet.selections) {
-      if (selection.kind !== Kind.FIELD) continue;
-
+    for (const selection of topLevelFields(operation.selectionSet, args.document)) {
       const field = selection.name.value;
       const rule = RULES[field] ?? (isMutation ? DEFAULT_WRITE : DEFAULT_READ);
       const email = emailFromArgs(

@@ -1,9 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import multer from 'multer';
 import { getUserFromRequest } from '../../shared/middleware/auth.js';
+import { requireUser } from '../../shared/auth-guard.js';
 import { ErrorCode, appError } from '../../shared/errors.js';
+import { sendError } from '../../shared/http.js';
 import { env } from '../../config/env.js';
-import { translate } from '../../shared/messages.js';
 import { saveAvatar, clearAvatar } from './avatar.service.js';
 
 //Avatar upload endpoints (multipart, held in memory until re-encoded).
@@ -27,53 +28,31 @@ const upload = multer({
   },
 });
 
-const authed = async (req: Request) => {
-  const caller = await getUserFromRequest(req);
-  if (!caller.user) {
-    throw appError(ErrorCode.UNAUTHENTICATED, 'You need to be signed in to do that.');
-  }
-  return caller.user;
-};
-
-type Extensions = { code: string } & Record<string, unknown>;
-
-//Sends a translated error in the same shape as a GraphQL error.
-const fail = (
-  req: Request,
-  res: Response,
-  status: number,
-  extensions: Extensions,
-  message: string
-): void => {
-  const localized = translate(message, extensions, req.headers['accept-language']);
-  res.status(status).json({ errors: [{ message: localized, extensions }] });
-};
+const UNAUTHORIZED = new Set<string>([
+  ErrorCode.UNAUTHENTICATED,
+  ErrorCode.TOKEN_REVOKED,
+  ErrorCode.SESSION_EXPIRED,
+]);
 
 const statusFor = (code: string): number => {
-  if (code === ErrorCode.UNAUTHENTICATED || code === ErrorCode.TOKEN_REVOKED) return 401;
+  if (UNAUTHORIZED.has(code)) return 401;
   if (code === ErrorCode.BAD_USER_INPUT) return 400;
   if (code === ErrorCode.RATE_LIMITED) return 429;
   return 500;
 };
 
+//Turns a coded error, a multer limit, or anything else into a JSON error response.
 const send = (req: Request, res: Response, error: unknown): void => {
   const shaped = error as { message?: string; extensions?: Record<string, unknown> };
   const code = shaped?.extensions?.code;
-
   if (typeof code === 'string') {
-    fail(
-      req,
-      res,
-      statusFor(code),
-      { ...shaped.extensions, code },
-      shaped.message ?? 'Something went wrong.'
-    );
+    sendError(req, res, statusFor(code), { ...shaped.extensions, code }, shaped.message ?? '');
     return;
   }
 
-  const multerError = error as { code?: string };
-  if (multerError?.code === 'LIMIT_FILE_SIZE') {
-    fail(
+  const limit = (error as { code?: string })?.code;
+  if (limit === 'LIMIT_FILE_SIZE') {
+    sendError(
       req,
       res,
       400,
@@ -82,8 +61,8 @@ const send = (req: Request, res: Response, error: unknown): void => {
     );
     return;
   }
-  if (multerError?.code?.startsWith('LIMIT_')) {
-    fail(
+  if (limit?.startsWith('LIMIT_')) {
+    sendError(
       req,
       res,
       400,
@@ -94,60 +73,49 @@ const send = (req: Request, res: Response, error: unknown): void => {
   }
 
   console.error('[upload] unexpected failure:', error);
-  fail(req, res, 500, { code: ErrorCode.INTERNAL }, 'Something went wrong. Please try again.');
+  sendError(req, res, 500, { code: ErrorCode.INTERNAL }, 'Something went wrong. Please try again.');
 };
 
+//Runs a route and sends any error it throws as a JSON error response.
+const route =
+  (handler: (req: Request, res: Response) => Promise<void>) =>
+  (req: Request, res: Response): void => {
+    handler(req, res).catch((error: unknown) => send(req, res, error));
+  };
+
+const signedIn = async (req: Request) => requireUser((await getUserFromRequest(req)).user);
+
+//Reads the multipart field `photo`; resolves with its bytes, if any.
+const readPhoto = (req: Request, res: Response): Promise<Buffer | undefined> =>
+  new Promise((resolve, reject) => {
+    upload.single('photo')(req, res, (error: unknown) => {
+      if (error) reject(error);
+      else resolve((req as Request & { file?: { buffer: Buffer } }).file?.buffer);
+    });
+  });
+
+//The /upload routes.
 export const uploadRouter = (): Router => {
   const router = Router();
 
   //POST /upload/avatar, multipart field `photo` -> { photoUrl }
-  router.post('/avatar', (req, res) => {
-    void (async () => {
-      let user: Awaited<ReturnType<typeof authed>>;
-      try {
-        user = await authed(req);
-      } catch (error) {
-        send(req, res, error);
-        return;
-      }
-
-      upload.single('photo')(req, res, (uploadError) => {
-        if (uploadError) {
-          send(req, res, uploadError);
-          return;
-        }
-
-        void (async () => {
-          try {
-            const file = (req as Request & { file?: { buffer: Buffer } }).file;
-            if (!file?.buffer) {
-              throw appError(ErrorCode.BAD_USER_INPUT, 'No image was received.', {
-                reason: 'NO_IMAGE',
-              });
-            }
-
-            const photoUrl = await saveAvatar(user, file.buffer);
-            res.status(200).json({ photoUrl });
-          } catch (error) {
-            send(req, res, error);
-          }
-        })();
-      });
-    })();
-  });
+  router.post(
+    '/avatar',
+    route(async (req, res) => {
+      const user = await signedIn(req);
+      const photoUrl = await saveAvatar(user, await readPhoto(req, res));
+      res.status(200).json({ photoUrl });
+    })
+  );
 
   //DELETE /upload/avatar -> { photoUrl: '' }
-  router.delete('/avatar', (req, res) => {
-    void (async () => {
-      try {
-        const user = await authed(req);
-        await clearAvatar(user);
-        res.status(200).json({ photoUrl: '' });
-      } catch (error) {
-        send(req, res, error);
-      }
-    })();
-  });
+  router.delete(
+    '/avatar',
+    route(async (req, res) => {
+      await clearAvatar(await signedIn(req));
+      res.status(200).json({ photoUrl: '' });
+    })
+  );
 
   return router;
 };

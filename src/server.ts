@@ -2,6 +2,7 @@ import type { Server } from 'node:http';
 import { env, envWarnings } from './config/env.js';
 import { connectDB, disconnectDB } from './config/db.js';
 import { createApp } from './app.js';
+import { dropDailyUniqueIndex } from './modules/checkin/index.js';
 
 //Connects to the database, then starts the HTTP server.
 
@@ -11,6 +12,9 @@ const start = async (): Promise<void> => {
   }
 
   await connectDB();
+  await dropDailyUniqueIndex().catch((error) => {
+    console.warn('[db] could not drop the old daily check-in index:', error);
+  });
 
   const app = createApp();
   const server: Server = app.listen(env.PORT, () => {

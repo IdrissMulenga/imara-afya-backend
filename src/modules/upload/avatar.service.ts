@@ -1,8 +1,8 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
-import { User, type IUser } from '../user/user.model.js';
+import type { IUser } from '../user/index.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { env } from '../../config/env.js';
 
@@ -14,6 +14,7 @@ const QUALITY = 82;
 //Public URL prefix; stored URLs are relative to the API origin.
 const PUBLIC_PREFIX = '/uploads/avatars';
 
+//Folder the avatar files are saved in.
 export const avatarDir = (): string => path.resolve(process.cwd(), env.UPLOAD_DIR, 'avatars');
 
 //Disk path for one of our avatar URLs, or null for anything else.
@@ -27,7 +28,7 @@ const localPathFor = (photoUrl: string): string | null => {
 };
 
 //Re-encodes and saves a new avatar, then deletes the previous one.
-export const saveAvatar = async (user: IUser, bytes: Buffer): Promise<string> => {
+export const saveAvatar = async (user: IUser, bytes: Buffer | undefined): Promise<string> => {
   if (!bytes?.length) {
     throw appError(ErrorCode.BAD_USER_INPUT, 'No image was received.', { reason: 'NO_IMAGE' });
   }
@@ -74,11 +75,3 @@ export const clearAvatar = async (user: IUser): Promise<void> => {
   const stale = localPathFor(previous);
   if (stale) await unlink(stale).catch(() => {});
 };
-
-export const deleteAvatarFor = async (userId: string): Promise<void> => {
-  const user = await User.findById(userId);
-  if (user) await clearAvatar(user);
-};
-
-export const etagFor = (photoUrl: string): string =>
-  `"${createHash('sha1').update(photoUrl).digest('hex').slice(0, 16)}"`;

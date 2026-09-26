@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
+import { daysSince } from '../../shared/datetime.js';
 
 //Signs and verifies session tokens and password-reset tokens.
 
@@ -12,25 +13,38 @@ export interface SessionClaims {
   origin: string;
 }
 
-export const signToken = (userId: string, tokenVersion: number, origin = new Date()): string =>
-  jwt.sign({ v: tokenVersion, o: origin.toISOString() }, env.JWT_SECRET, {
+export interface ResetClaims {
+  userId: string;
+  tokenVersion: number;
+}
+
+//Signs claims for a user with the pinned algorithm and issuer.
+const sign = (claims: object, userId: string, expiresIn: string): string =>
+  jwt.sign(claims, env.JWT_SECRET, {
     algorithm: ALGORITHM,
     issuer: env.JWT_ISSUER,
     subject: userId,
-    expiresIn: `${env.SESSION_DAYS}d`,
+    expiresIn: expiresIn as jwt.SignOptions['expiresIn'],
   });
 
+//Verifies a token with the pinned algorithm and issuer; throws jwt's own errors.
+const decode = (token: string): jwt.JwtPayload =>
+  jwt.verify(token, env.JWT_SECRET, {
+    algorithms: [ALGORITHM],
+    issuer: env.JWT_ISSUER,
+  }) as jwt.JwtPayload;
+
+//Signs a session token; origin is the time of the original sign-in.
+export const signToken = (userId: string, tokenVersion: number, origin = new Date()): string =>
+  sign({ v: tokenVersion, o: origin.toISOString() }, userId, `${env.SESSION_DAYS}d`);
+
+//Reads a session token, or throws SESSION_EXPIRED / UNAUTHENTICATED.
 export const verifyToken = (token: string): SessionClaims => {
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET, {
-      algorithms: [ALGORITHM],
-      issuer: env.JWT_ISSUER,
-    }) as jwt.JwtPayload;
-
+    const payload = decode(token);
     if (!payload.sub || typeof payload.v !== 'number' || typeof payload.o !== 'string') {
       throw appError(ErrorCode.UNAUTHENTICATED, 'Your session is not valid.');
     }
-
     return { userId: payload.sub, tokenVersion: payload.v, origin: payload.o };
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
@@ -42,44 +56,30 @@ export const verifyToken = (token: string): SessionClaims => {
 
 //Signs a password-reset ticket bound to the current tokenVersion.
 export const signResetToken = (userId: string, tokenVersion: number): string =>
-  jwt.sign({ purpose: 'PASSWORD_RESET', v: tokenVersion }, env.JWT_SECRET, {
-    algorithm: ALGORITHM,
-    issuer: env.JWT_ISSUER,
-    subject: userId,
-    expiresIn: `${env.RESET_TOKEN_MINUTES}m`,
-  });
+  sign({ purpose: 'PASSWORD_RESET', v: tokenVersion }, userId, `${env.RESET_TOKEN_MINUTES}m`);
 
-export interface ResetClaims {
-  userId: string;
-  tokenVersion: number;
-}
-
+//Reads a password-reset token, or throws INVALID_RESET_TOKEN.
 export const verifyResetToken = (token: string): ResetClaims => {
+  let payload: jwt.JwtPayload;
   try {
-    const payload = jwt.verify(token, env.JWT_SECRET, {
-      algorithms: [ALGORITHM],
-      issuer: env.JWT_ISSUER,
-    }) as jwt.JwtPayload;
-
-    //Rejects anything that is not a reset token.
-    if (payload.purpose !== 'PASSWORD_RESET' || !payload.sub || typeof payload.v !== 'number') {
-      throw appError(ErrorCode.INVALID_RESET_TOKEN, 'That reset link is not valid.', {
-        reason: 'INVALID',
-      });
-    }
-
-    return { userId: payload.sub, tokenVersion: payload.v };
+    payload = decode(token);
   } catch {
     throw appError(
       ErrorCode.INVALID_RESET_TOKEN,
       'That reset request has expired. Please start again.'
     );
   }
+  //Rejects anything that is not a reset token.
+  if (payload.purpose !== 'PASSWORD_RESET' || !payload.sub || typeof payload.v !== 'number') {
+    throw appError(ErrorCode.INVALID_RESET_TOKEN, 'That reset link is not valid.', {
+      reason: 'INVALID',
+    });
+  }
+  return { userId: payload.sub, tokenVersion: payload.v };
 };
 
 //True when the original sign-in is older than MAX_SESSION_DAYS.
 export const isSessionTooOld = (origin: string): boolean => {
-  const started = Date.parse(origin);
-  if (Number.isNaN(started)) return true;
-  return (Date.now() - started) / (24 * 60 * 60 * 1000) > env.MAX_SESSION_DAYS;
+  const started = new Date(origin);
+  return Number.isNaN(started.getTime()) || daysSince(started) > env.MAX_SESSION_DAYS;
 };

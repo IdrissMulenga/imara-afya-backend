@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { IUser } from '../modules/user/user.model.js';
+import type { IUser } from '../modules/user/index.js';
 
 export interface Context {
   user?: IUser;

@@ -1,10 +1,8 @@
 import * as authService from './auth.service.js';
 import { listDevices, revokeDevice } from './device.service.js';
 import { isAuthPayload } from './auth.types.js';
-import { requireAuth } from '../../shared/auth-guard.js';
-import { appError, ErrorCode, handleError } from '../../shared/errors.js';
-import type { Context } from '../../shared/context.js';
-import type { IUser } from '../user/user.model.js';
+import { safe, withUser } from '../../shared/resolve.js';
+import type { IUser } from '../user/index.js';
 import type {
   SignUpInput,
   LoginInput,
@@ -18,168 +16,65 @@ import type {
 
 export const authResolvers = {
   Query: {
-    myTrustedDevices: async (_p: unknown, _a: unknown, context: Context) => {
-      const caller = requireAuth(context);
-      try {
-        const devices = await listDevices(caller._id);
-        const currentId = context.req.get('x-device-id');
-
-        return devices.map((device) => ({
-          id: String(device._id),
-          label: device.label,
-          lastSeenAt: device.lastSeenAt.toISOString(),
-          expiresAt: device.expiresAt.toISOString(),
-          current: Boolean(currentId) && device.deviceId === currentId,
-        }));
-      } catch (error) {
-        throw handleError(error, 'myTrustedDevices');
-      }
-    },
+    myTrustedDevices: withUser((user, _a: unknown, context) =>
+      listDevices(user._id, context.req.get('x-device-id'))
+    ),
   },
 
   Mutation: {
-    signup: async (_p: unknown, args: { input: SignUpInput }, context: Context) => {
-      try {
-        return await authService.signup({ ...args.input, ip: context.ip });
-      } catch (error) {
-        throw handleError(error, 'signup');
-      }
-    },
+    signup: safe((args: { input: SignUpInput }, context) =>
+      authService.signup({ ...args.input, ip: context.ip })
+    ),
 
-    login: async (_p: unknown, args: { input: LoginInput }, context: Context) => {
-      try {
-        return await authService.login({ ...args.input, ip: context.ip });
-      } catch (error) {
-        throw handleError(error, 'login');
-      }
-    },
+    login: safe((args: { input: LoginInput }, context) =>
+      authService.login({ ...args.input, ip: context.ip })
+    ),
 
-    verifyLoginOtp: async (_p: unknown, args: { email: string; input: VerifyOtpInput }) => {
-      try {
-        if (!args.input.deviceId) {
-          throw appError(
-            ErrorCode.INVALID_DEVICE_ID,
-            'This request is missing its device identifier.',
-            {
-              reason: 'MISSING',
-            }
-          );
-        }
-        return await authService.verifyLoginOtp({
-          email: args.email,
-          code: args.input.code,
-          deviceId: args.input.deviceId,
-          deviceLabel: args.input.deviceLabel,
-        });
-      } catch (error) {
-        throw handleError(error, 'verifyLoginOtp');
-      }
-    },
+    verifyLoginOtp: safe((args: { email: string; input: VerifyOtpInput }) =>
+      authService.verifyLoginOtp({ email: args.email, ...args.input })
+    ),
 
-    resendLoginOtp: async (
-      _p: unknown,
-      args: { email: string; deviceId: string },
-      context: Context
-    ) => {
-      try {
-        return await authService.resendLoginOtp(args.email, args.deviceId, context.ip);
-      } catch (error) {
-        throw handleError(error, 'resendLoginOtp');
-      }
-    },
+    resendLoginOtp: safe((args: { email: string; deviceId: string }, context) =>
+      authService.resendLoginOtp(args.email, args.deviceId, context.ip)
+    ),
 
-    verifyEmailOtp: async (_p: unknown, args: { input: VerifyOtpInput }, context: Context) => {
-      const caller = requireAuth(context);
-      try {
-        return await authService.verifyEmailOtp(String(caller._id), args.input.code);
-      } catch (error) {
-        throw handleError(error, 'verifyEmailOtp');
-      }
-    },
+    verifyEmailOtp: withUser((user, args: { input: VerifyOtpInput }) =>
+      authService.verifyEmailOtp(user, args.input.code)
+    ),
 
-    resendEmailOtp: async (_p: unknown, _a: unknown, context: Context) => {
-      const caller = requireAuth(context);
-      try {
-        return await authService.resendEmailOtp(String(caller._id), context.ip);
-      } catch (error) {
-        throw handleError(error, 'resendEmailOtp');
-      }
-    },
+    resendEmailOtp: withUser((user, _a: unknown, context) =>
+      authService.resendEmailOtp(user, context.ip)
+    ),
 
-    requestPasswordReset: async (_p: unknown, args: { email: string }, context: Context) => {
-      try {
-        return await authService.requestPasswordReset(args.email, context.ip);
-      } catch (error) {
-        throw handleError(error, 'requestPasswordReset');
-      }
-    },
+    requestPasswordReset: safe((args: { email: string }, context) =>
+      authService.requestPasswordReset(args.email, context.ip)
+    ),
 
     //Resends the reset code; same as requestPasswordReset with its own rate limit.
-    resendPasswordResetOtp: async (_p: unknown, args: { email: string }, context: Context) => {
-      try {
-        return await authService.requestPasswordReset(args.email, context.ip);
-      } catch (error) {
-        throw handleError(error, 'resendPasswordResetOtp');
-      }
-    },
+    resendPasswordResetOtp: safe((args: { email: string }, context) =>
+      authService.requestPasswordReset(args.email, context.ip)
+    ),
 
-    verifyPasswordResetOtp: async (_p: unknown, args: { input: VerifyResetOtpInput }) => {
-      try {
-        const ticket = await authService.verifyPasswordResetOtp(args.input.email, args.input.code);
-        return { resetToken: ticket.resetToken, expiresAt: ticket.expiresAt.toISOString() };
-      } catch (error) {
-        throw handleError(error, 'verifyPasswordResetOtp');
-      }
-    },
+    verifyPasswordResetOtp: safe(async (args: { input: VerifyResetOtpInput }) => {
+      const ticket = await authService.verifyPasswordResetOtp(args.input.email, args.input.code);
+      return { resetToken: ticket.resetToken, expiresAt: ticket.expiresAt.toISOString() };
+    }),
 
-    resetPassword: async (_p: unknown, args: { input: ResetPasswordInput }) => {
-      try {
-        return await authService.resetPassword(args.input);
-      } catch (error) {
-        throw handleError(error, 'resetPassword');
-      }
-    },
+    resetPassword: safe((args: { input: ResetPasswordInput }) =>
+      authService.resetPassword(args.input)
+    ),
 
-    changePassword: async (_p: unknown, args: { input: ChangePasswordInput }, context: Context) => {
-      const caller = requireAuth(context);
-      try {
-        return await authService.changePassword(String(caller._id), args.input);
-      } catch (error) {
-        throw handleError(error, 'changePassword');
-      }
-    },
+    changePassword: withUser((user, args: { input: ChangePasswordInput }) =>
+      authService.changePassword(user, args.input)
+    ),
 
-    refreshSession: async (_p: unknown, _a: unknown, context: Context) => {
-      const caller = requireAuth(context);
-      try {
-        const origin = context.sessionOrigin;
-        if (!origin) {
-          throw appError(ErrorCode.SESSION_EXPIRED, 'Please sign in again to continue.');
-        }
-        return await authService.refreshSession(String(caller._id), origin);
-      } catch (error) {
-        throw handleError(error, 'refreshSession');
-      }
-    },
+    refreshSession: withUser((user, _a: unknown, context) =>
+      authService.refreshSession(user, context.sessionOrigin)
+    ),
 
-    logout: async (_p: unknown, _a: unknown, context: Context) => {
-      const caller = requireAuth(context);
-      try {
-        return await authService.logout(String(caller._id));
-      } catch (error) {
-        throw handleError(error, 'logout');
-      }
-    },
+    logout: withUser((user) => authService.logout(user)),
 
-    revokeTrustedDevice: async (_p: unknown, args: { id: string }, context: Context) => {
-      const caller = requireAuth(context);
-      try {
-        await revokeDevice(caller._id, args.id);
-        return true;
-      } catch (error) {
-        throw handleError(error, 'revokeTrustedDevice');
-      }
-    },
+    revokeTrustedDevice: withUser((user, args: { id: string }) => revokeDevice(user._id, args.id)),
   },
 
   //Tells GraphQL which LoginResult member was returned.

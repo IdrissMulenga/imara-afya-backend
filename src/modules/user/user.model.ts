@@ -28,11 +28,20 @@ export interface IUser extends Document {
   waterGoalGlasses: number;
   stepGoal: number;
   sleepGoalHours: number;
+  //Sleep schedule as HH:MM in the user's timezone; null when not set.
+  sleepBedtime: string | null;
+  sleepWakeTime: string | null;
+  //Schedule for nights ending on Saturday and Sunday; null means the same as weekdays.
+  sleepWeekendBedtime: string | null;
+  sleepWeekendWakeTime: string | null;
 
   role: 'user' | 'admin';
   createdAt: Date;
   updatedAt: Date;
 }
+
+//HH:MM, 24-hour.
+const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const userSchema = new Schema<IUser>(
   {
@@ -61,6 +70,10 @@ const userSchema = new Schema<IUser>(
     waterGoalGlasses: { type: Number, default: 8, min: 1, max: 30 },
     stepGoal: { type: Number, default: 8000, min: 500, max: 100000 },
     sleepGoalHours: { type: Number, default: 8, min: 3, max: 14 },
+    sleepBedtime: { type: String, default: null, match: CLOCK_TIME },
+    sleepWakeTime: { type: String, default: null, match: CLOCK_TIME },
+    sleepWeekendBedtime: { type: String, default: null, match: CLOCK_TIME },
+    sleepWeekendWakeTime: { type: String, default: null, match: CLOCK_TIME },
 
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
   },

@@ -43,10 +43,14 @@ src/
 
   shared/               used by more than one module
     context.ts          the Context every resolver receives
-    auth-guard.ts       requireAuth(context)
+    auth-guard.ts       requireAuth(context), requireUser(user)
+    resolve.ts          withUser() / safe(): the wrapper every resolver uses
     errors.ts           ErrorCode list, appError(), handleError()
-    validation.ts       normalizeEmail, checkPassword, maskEmail, ...
-    datetime.ts         dayInZone, addDays, streakLength, ...
+    validation.ts       normalizeEmail, checkPassword, checkDay, resolveDay, ...
+    datetime.ts         dayInZone, addDays, daysBetween, streakLength, ...
+    numbers.ts          roundTo, mean, median, countOr
+    password.ts         hashPassword, passwordMatches, setPassword
+    http.ts             sendError() for the plain express routes
     middleware/
       auth.ts           turns a bearer token into context.user
       rateLimit.ts      per-IP middleware + per-operation yoga plugin
@@ -77,8 +81,14 @@ src/
       habit.model.ts    one HabitLog per user per day (day = YYYY-MM-DD in user's tz)
       habit.service.ts  logHabits, addWater, summary, history
       ...
-    checkin/            daily mood and energy (1-5) with a note; streak and 7/30-day averages
-      checkin.model.ts  one CheckIn per user per day
+    checkin/            mood and energy (1-5) with a note, up to 10 a day; streak and 7/30-day averages
+      checkin.model.ts  one CheckIn per check-in (several per user per day)
+    cycle/              periods (start/end), averages, cycle day, phase and next-period estimates
+      cycle.model.ts    one CyclePeriod per period; end is null while ongoing
+    upload/             profile photos over plain REST (multipart), not GraphQL
+      avatar.service.ts re-encode to a 512px JPEG, save under UPLOAD_DIR, delete old
+      avatar.routes.ts  POST /upload/avatar, DELETE /upload/avatar
+      index.ts          exports the router, avatarDir, saveAvatar, clearAvatar
 
   schema.ts             builds the executable schema from modules/index.ts
   app.ts                the express pipeline
@@ -96,10 +106,11 @@ Resolvers merge the same way: `Query` and `Mutation` are spread together, and
 anything else a module exports (a union `__resolveType`, field resolvers like
 `User.bmi`) merges per type.
 
-Modules may import each other through the folder's `index.ts`, never by
-reaching inside it. Today: `auth` imports `User` from `modules/user`, and
-`user` imports `Otp` and `Device` from `modules/auth` so account deletion can
-erase them.
+Modules and `shared/` may import a module only through its folder's `index.ts`,
+never by reaching inside it. Today: `auth` imports `User` and `getUser` from
+`modules/user`, and
+`user` imports `Otp` and `Device` from `modules/auth` and `clearAvatar` from
+`modules/upload` so account deletion can erase them.
 
 ### Adding a feature
 
@@ -121,9 +132,11 @@ the database after they ask for their account to be deleted.
 - **Services hold the logic. Resolvers do not.** A resolver reads arguments,
   calls a service, returns. If you are writing an `if` about a business rule in
   a resolver, it belongs in the service.
-- **Every resolver that needs a user starts with `requireAuth(context)`** (from `shared/auth-guard.ts`) and
-  wraps its body in `try/catch` with `handleError(error, 'fieldName')`. The
-  catch is what stops a raw stack trace reaching the API response.
+- **Every resolver is wrapped in `withUser` (needs a signed-in user) or `safe`
+  (public)** from `shared/resolve.ts`. `withUser` checks the caller and passes the
+  user first; both send any error through `handleError` under the field's name,
+  which is what stops a raw stack trace reaching the API response. Services take
+  the `IUser` the wrapper passes in rather than loading it again.
 - **Errors carry a code** from `shared/errors.ts`. The app branches on the code,
   never the message — messages get translated and reworded. Throw with
   `appError(ErrorCode.X, 'message')`. If the message means something narrower
@@ -134,7 +147,7 @@ the database after they ask for their account to be deleted.
   trust an id on its own. This is what stops one account reading another's
   records.
 - **Validate on the server even though the app validates too.** curl bypasses
-  the app entirely. Rules live in `utils/validation.ts`.
+  the app entirely. Rules live in `shared/validation.ts`.
 - **Dates go through `shared/datetime.ts`.** NEVER write
   `new Date().toISOString().slice(0, 10)` — that is the UTC day, not the user's.
   A glass of water logged at 00:30 in Bujumbura is 22:30 the previous day in
@@ -147,8 +160,8 @@ the database after they ask for their account to be deleted.
 
 ## The request pipeline (`src/app.ts`)
 
-security headers → CORS → 1mb body cap → `/health` → per-IP rate limit →
-graphql-yoga (depth limit + introspection control → per-operation rate limit →
+security headers → CORS → 1mb body cap → `/uploads/avatars` (static files) →
+`/upload` (own per-IP budget) → `/health` → per-IP rate limit → graphql-yoga (depth limit + introspection control → per-operation rate limit →
 context → resolvers)
 
 Order matters:
@@ -160,6 +173,10 @@ Order matters:
   fresh value per request means a fresh budget.
 - Check the `RULES` table in `shared/middleware/rateLimit.ts` before assuming a new
   mutation is unlimited. Unlisted fields fall through to a default budget.
+- `/upload` is REST, not GraphQL, so it has its own per-IP budget (`upload`) and
+  reports errors in the GraphQL `{ errors: [{ message, extensions }] }` shape.
+- Avatars are files on local disk under `UPLOAD_DIR` (git-ignored). In production
+  that directory must be a persistent volume, or every deploy loses every photo.
 - Rate-limit counters are IN MEMORY. They reset on restart and are not shared
   between instances. That is deliberate while one instance runs — swap the Map
   for Redis before running a second, not before.

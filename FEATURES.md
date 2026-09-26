@@ -78,9 +78,10 @@ silently failing.
 
 *Per-medicine reminders are still not built.*
 
-## 9. Daily check-in — Backend only
+## 9. Check-in — Live
 
-Mood and energy 1–5 with a note, one per day, streak and rolling averages.
+Mood and energy 1–5 with a note, up to 10 a day, streak, rolling averages and a
+trend chart in the app.
 
 ## 10. Daily routines — Backend only
 
@@ -120,6 +121,6 @@ which existed only for Find care.
 
 | Status | Features |
 |---|---|
-| **Live** | Account, change password, records, medications, cycle, habits, reminders, guidance |
-| **Backend only** | Pregnancy, check-in, routines, record attachments, password reset UI |
+| **Live** | Account, change password, records, medications, cycle, habits, check-in, reminders, guidance |
+| **Backend only** | Pregnancy, routines, record attachments, password reset UI |
 | **Not built** | Per-medicine reminders, insights, steps |

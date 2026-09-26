@@ -51,9 +51,16 @@ const WARNING: Record<Locale, string> = {
   sw: 'Kama hukuwa wewe, badilisha nywila yako.',
 };
 
+const EXPIRES: Record<Locale, (minutes: number) => string> = {
+  en: (m) => `This code expires in ${m} minutes.`,
+  fr: (m) => `Ce code expire dans ${m} minutes.`,
+  sw: (m) => `Namba hii itaisha muda baada ya dakika ${m}.`,
+};
+
 const pickLocale = (language: Language): Locale =>
   language === 'fr' || language === 'sw' ? language : 'en';
 
+//Emails a code in the user's language (logs it instead in development without a key).
 export const sendOtpEmail = async (params: {
   to: string;
   code: string;
@@ -65,27 +72,19 @@ export const sendOtpEmail = async (params: {
   const warning = params.purpose === 'SIGNUP' ? '' : WARNING[locale];
 
   const subject = `${params.code} ${copy.subject}`;
+  const expires = EXPIRES[locale](env.OTP_TTL_MINUTES);
 
   const html = `<!doctype html>
 <html><body style="margin:0;padding:24px;background:#f5f7f6;font-family:Helvetica,Arial,sans-serif;color:#14281f">
   <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px">
     <p style="margin:0 0 20px;font-size:15px;line-height:1.5">${copy.line}</p>
     <p style="margin:0 0 20px;font-size:38px;letter-spacing:8px;font-weight:700;color:#1e5e45">${params.code}</p>
-    <p style="margin:0 0 8px;font-size:13px;color:#4a6b5c">This code expires in ${env.OTP_TTL_MINUTES} minutes.</p>
+    <p style="margin:0 0 8px;font-size:13px;color:#4a6b5c">${expires}</p>
     ${warning ? `<p style="margin:16px 0 0;font-size:13px;color:#4a6b5c">${warning}</p>` : ''}
   </div>
 </body></html>`;
 
-  const text = [
-    copy.line,
-    '',
-    params.code,
-    '',
-    `This code expires in ${env.OTP_TTL_MINUTES} minutes.`,
-    warning,
-  ]
-    .filter(Boolean)
-    .join('\n');
+  const text = [copy.line, '', params.code, '', expires, warning].filter(Boolean).join('\n');
 
   //Development only: prints the code to the server log.
   if (!env.IS_PRODUCTION) {

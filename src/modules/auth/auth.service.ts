@@ -1,7 +1,8 @@
 import bcrypt from 'bcryptjs';
-import { User, type IUser } from '../user/user.model.js';
+import { User, getUser, type IUser } from '../user/index.js';
 import { env } from '../../config/env.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
+import { hashPassword, passwordMatches, setPassword } from '../../shared/password.js';
 import {
   normalizeEmail,
   tryNormalizeEmail,
@@ -10,8 +11,10 @@ import {
   maskEmail,
 } from '../../shared/validation.js';
 import { signToken, signResetToken, verifyResetToken, isSessionTooOld } from './token.service.js';
-import { sendCode, sendCodeBestEffort, verifyCode } from './otp.service.js';
+import { codeNotValid, sendCode, sendCodeBestEffort, verifyCode } from './otp.service.js';
 import { isDeviceTrusted, trustDevice, touchDevice, revokeAllDevices } from './device.service.js';
+import { Device } from './device.model.js';
+import { Otp } from './otp.model.js';
 import { minutesFromNow } from '../../shared/datetime.js';
 import type {
   SignUpInput,
@@ -23,15 +26,10 @@ import type {
   ResetTicket,
 } from './auth.types.js';
 
-const PASSWORD_ROUNDS = 12;
+const DUMMY_HASH = bcrypt.hashSync('imara-afya-timing-equaliser', 12);
 
-const DUMMY_HASH = bcrypt.hashSync('imara-afya-timing-equaliser', PASSWORD_ROUNDS);
-
-const findUserOrThrow = async (id: string): Promise<IUser> => {
-  const user = await User.findById(id);
-  if (!user) throw appError(ErrorCode.ACCOUNT_NOT_FOUND, 'That account no longer exists.');
-  return user;
-};
+const invalidCredentials = () =>
+  appError(ErrorCode.INVALID_CREDENTIALS, 'That email or password is not right.');
 
 //Signs a session token. origin is the time of the original sign-in.
 const makeSession = (user: IUser, origin = new Date()): AuthPayload => ({
@@ -51,15 +49,23 @@ export const signup = async (input: SignUpInput & { ip: string }): Promise<AuthP
 
   const user = await User.create({
     email,
-    passwordHash: await bcrypt.hash(input.password, PASSWORD_ROUNDS),
+    passwordHash: await hashPassword(input.password),
     ...(input.language ? { language: input.language } : {}),
   });
 
-  await trustDevice({ userId: user._id, deviceId, label: input.deviceLabel });
-
-  await sendCodeBestEffort({ user, purpose: 'SIGNUP', ip: input.ip, skipCooldown: true });
-
-  return makeSession(user);
+  //If a later step fails, the account is removed again so the same email can sign up.
+  try {
+    await trustDevice({ userId: user._id, deviceId, label: input.deviceLabel });
+    await sendCodeBestEffort({ user, purpose: 'SIGNUP', ip: input.ip, skipCooldown: true });
+    return makeSession(user);
+  } catch (error) {
+    await Promise.all([
+      User.deleteOne({ _id: user._id }),
+      Device.deleteMany({ user: user._id }),
+      Otp.deleteMany({ user: user._id }),
+    ]).catch((cleanup) => console.error('[auth] could not undo failed signup:', cleanup));
+    throw error;
+  }
 };
 
 //A trusted device gets a token; any other device gets a code and no token.
@@ -72,12 +78,9 @@ export const login = async (input: LoginInput & { ip: string }): Promise<LoginRe
   //Compares against a dummy hash so an unknown email takes as long as a known one.
   if (!user) {
     await bcrypt.compare(input.password, DUMMY_HASH);
-    throw appError(ErrorCode.INVALID_CREDENTIALS, 'That email or password is not right.');
+    throw invalidCredentials();
   }
-
-  if (!(await bcrypt.compare(input.password, user.passwordHash))) {
-    throw appError(ErrorCode.INVALID_CREDENTIALS, 'That email or password is not right.');
-  }
+  if (!(await passwordMatches(user, input.password))) throw invalidCredentials();
 
   if (await isDeviceTrusted(user._id, deviceId)) {
     await touchDevice(user._id, deviceId);
@@ -97,24 +100,19 @@ export const login = async (input: LoginInput & { ip: string }): Promise<LoginRe
   return { challenge: true, purpose: 'LOGIN', expiresAt, maskedEmail: maskEmail(user.email) };
 };
 
+//Checks a login code for a new device, trusts the device and returns a session.
 export const verifyLoginOtp = async (input: {
   email: string;
   code: string;
-  deviceId: string;
+  deviceId?: string;
   deviceLabel?: string;
 }): Promise<AuthPayload> => {
   const email = normalizeEmail(input.email);
   const deviceId = checkDeviceId(input.deviceId);
 
-  const user = await User.findOne({ email });
-
   //An unknown email gets the same error as a wrong code.
-  if (!user) {
-    throw appError(
-      ErrorCode.OTP_NOT_FOUND,
-      'That code is no longer valid. Please ask for a new one.'
-    );
-  }
+  const user = await User.findOne({ email });
+  if (!user) throw codeNotValid();
 
   const { deviceId: issuedFor } = await verifyCode({
     userId: user._id,
@@ -136,9 +134,8 @@ export const verifyLoginOtp = async (input: {
   return makeSession(user);
 };
 
-export const verifyEmailOtp = async (userId: string, code: string): Promise<IUser> => {
-  const user = await findUserOrThrow(userId);
-
+//Marks the email verified once its signup code is right.
+export const verifyEmailOtp = async (user: IUser, code: string): Promise<IUser> => {
   if (user.emailVerified) return user;
 
   await verifyCode({ userId: user._id, purpose: 'SIGNUP', code });
@@ -150,13 +147,13 @@ export const verifyEmailOtp = async (userId: string, code: string): Promise<IUse
   return user;
 };
 
-export const resendEmailOtp = async (userId: string, ip: string): Promise<boolean> => {
-  const user = await findUserOrThrow(userId);
-  if (user.emailVerified) return true;
-  await sendCode({ user, purpose: 'SIGNUP', ip });
+//Sends a new signup code unless the email is already verified.
+export const resendEmailOtp = async (user: IUser, ip: string): Promise<boolean> => {
+  if (!user.emailVerified) await sendCode({ user, purpose: 'SIGNUP', ip });
   return true;
 };
 
+//Sends a new login code; returns true whether or not the account exists.
 export const resendLoginOtp = async (
   email: string,
   deviceId: string,
@@ -189,16 +186,10 @@ export const requestPasswordReset = async (email: string, ip: string): Promise<b
   return true;
 };
 
+//Swaps a correct reset code for a short-lived reset token.
 export const verifyPasswordResetOtp = async (email: string, code: string): Promise<ResetTicket> => {
-  const normalized = normalizeEmail(email);
-  const user = await User.findOne({ email: normalized });
-
-  if (!user) {
-    throw appError(
-      ErrorCode.OTP_NOT_FOUND,
-      'That code is no longer valid. Please ask for a new one.'
-    );
-  }
+  const user = await User.findOne({ email: normalizeEmail(email) });
+  if (!user) throw codeNotValid();
 
   await verifyCode({ userId: user._id, purpose: 'RESET', code });
 
@@ -208,12 +199,13 @@ export const verifyPasswordResetOtp = async (email: string, code: string): Promi
   };
 };
 
+//Sets a new password from a reset token, signs out every device and trusts this one.
 export const resetPassword = async (input: ResetPasswordInput): Promise<AuthPayload> => {
   checkPassword(input.password);
   const deviceId = checkDeviceId(input.deviceId);
 
   const ticket = verifyResetToken(input.resetToken);
-  const user = await findUserOrThrow(ticket.userId);
+  const user = await getUser(ticket.userId);
 
   //Rejects a reset ticket that has already been used.
   if (ticket.tokenVersion !== user.tokenVersion) {
@@ -224,17 +216,14 @@ export const resetPassword = async (input: ResetPasswordInput): Promise<AuthPayl
     );
   }
 
-  if (await bcrypt.compare(input.password, user.passwordHash)) {
+  if (await passwordMatches(user, input.password)) {
     throw appError(
       ErrorCode.PASSWORD_UNCHANGED,
       'That is your current password. Please choose a different one.'
     );
   }
 
-  user.passwordHash = await bcrypt.hash(input.password, PASSWORD_ROUNDS);
-  user.tokenVersion += 1;
-  user.failedPasswordAttempts = 0;
-  await user.save();
+  await setPassword(user, input.password);
 
   //Revokes all trusted devices, then trusts this one.
   await revokeAllDevices(user._id);
@@ -243,12 +232,12 @@ export const resetPassword = async (input: ResetPasswordInput): Promise<AuthPayl
   return makeSession(user);
 };
 
+//Changes the password after checking the current one; locks after too many wrong tries.
 export const changePassword = async (
-  userId: string,
+  user: IUser,
   input: ChangePasswordInput
 ): Promise<AuthPayload> => {
   checkPassword(input.newPassword);
-  const user = await findUserOrThrow(userId);
 
   if (user.failedPasswordAttempts >= env.MAX_PASSWORD_ATTEMPTS) {
     throw appError(
@@ -257,7 +246,7 @@ export const changePassword = async (
     );
   }
 
-  if (!(await bcrypt.compare(input.currentPassword, user.passwordHash))) {
+  if (!(await passwordMatches(user, input.currentPassword))) {
     user.failedPasswordAttempts += 1;
     await user.save();
     throw appError(ErrorCode.WRONG_PASSWORD, 'That is not your current password.', {
@@ -269,24 +258,20 @@ export const changePassword = async (
     throw appError(ErrorCode.PASSWORD_UNCHANGED, 'Your new password is the same as the old one.');
   }
 
-  user.passwordHash = await bcrypt.hash(input.newPassword, PASSWORD_ROUNDS);
-  user.tokenVersion += 1;
-  user.failedPasswordAttempts = 0;
-  await user.save();
-
+  await setPassword(user, input.newPassword);
   return makeSession(user);
 };
 
-export const refreshSession = async (userId: string, origin: string): Promise<AuthPayload> => {
-  if (isSessionTooOld(origin)) {
+//A new token with the same sign-in time, until that sign-in is MAX_SESSION_DAYS old.
+export const refreshSession = (user: IUser, origin: string | undefined): AuthPayload => {
+  if (!origin || isSessionTooOld(origin)) {
     throw appError(ErrorCode.SESSION_EXPIRED, 'Please sign in again to continue.');
   }
-  const user = await findUserOrThrow(userId);
   return makeSession(user, new Date(origin));
 };
 
 //Bumping tokenVersion signs out every device, not just this one.
-export const logout = async (userId: string): Promise<boolean> => {
-  await User.updateOne({ _id: userId }, { $inc: { tokenVersion: 1 } });
+export const logout = async (user: IUser): Promise<boolean> => {
+  await User.updateOne({ _id: user._id }, { $inc: { tokenVersion: 1 } });
   return true;
 };

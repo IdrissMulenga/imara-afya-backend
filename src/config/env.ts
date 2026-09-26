@@ -98,6 +98,7 @@ if (env.IS_PRODUCTION) {
   }
 }
 
+//Settings that are allowed but probably wrong, printed at startup.
 export const envWarnings = (): string[] => {
   const warnings: string[] = [];
   if (!env.FRONTEND_URL) warnings.push('FRONTEND_URL is unset — CORS allows ANY origin.');

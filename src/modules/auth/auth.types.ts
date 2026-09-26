@@ -1,4 +1,4 @@
-import type { IUser } from '../user/user.model.js';
+import type { IUser } from '../user/index.js';
 
 export interface SignUpInput {
   email: string;

@@ -1,9 +1,10 @@
-import type { Types } from 'mongoose';
+import { isValidObjectId, type Types } from 'mongoose';
 import { Device } from './device.model.js';
 import { env } from '../../config/env.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { cleanText } from '../../shared/validation.js';
 import { daysFromNow } from '../../shared/datetime.js';
+import { upsertWithRetry } from '../../shared/upsert.js';
 
 //Maximum trusted devices per user.
 const MAX_DEVICES = 20;
@@ -21,6 +22,7 @@ const evictBeyondCap = async (userId: Types.ObjectId): Promise<void> => {
   await Device.deleteMany({ _id: { $in: surplus.map((device) => device._id) } });
 };
 
+//True when the device is trusted and its trust has not expired.
 export const isDeviceTrusted = async (
   userId: Types.ObjectId,
   deviceId: string
@@ -39,13 +41,15 @@ export const trustDevice = async (params: {
     ? cleanText(params.label, 80, 'deviceName') || 'Unknown device'
     : 'Unknown device';
 
-  await Device.updateOne(
-    { user: params.userId, deviceId: params.deviceId },
-    {
-      $set: { lastSeenAt: new Date(), expiresAt: daysFromNow(env.DEVICE_TRUST_DAYS), label },
-      $setOnInsert: { user: params.userId, deviceId: params.deviceId },
-    },
-    { upsert: true }
+  await upsertWithRetry(() =>
+    Device.updateOne(
+      { user: params.userId, deviceId: params.deviceId },
+      {
+        $set: { lastSeenAt: new Date(), expiresAt: daysFromNow(env.DEVICE_TRUST_DAYS), label },
+        $setOnInsert: { user: params.userId, deviceId: params.deviceId },
+      },
+      { upsert: true }
+    )
   );
 
   await evictBeyondCap(params.userId);
@@ -59,19 +63,30 @@ export const touchDevice = async (userId: Types.ObjectId, deviceId: string): Pro
   );
 };
 
-export const listDevices = (userId: Types.ObjectId) =>
-  Device.find({ user: userId }).sort({ lastSeenAt: -1 }).limit(MAX_DEVICES).lean();
-
-export const revokeDevice = async (userId: Types.ObjectId, id: string): Promise<void> => {
-  if (!/^[0-9a-fA-F]{24}$/.test(id)) {
-    throw appError(ErrorCode.DEVICE_NOT_FOUND, 'That device is no longer on the list.');
-  }
-  const result = await Device.deleteOne({ _id: id, user: userId });
-  if (result.deletedCount === 0) {
-    throw appError(ErrorCode.DEVICE_NOT_FOUND, 'That device is no longer on the list.');
-  }
+//The trusted devices, most recently seen first; current marks the one making the request.
+export const listDevices = async (userId: Types.ObjectId, currentDeviceId?: string) => {
+  const devices = await Device.find({ user: userId })
+    .sort({ lastSeenAt: -1 })
+    .limit(MAX_DEVICES)
+    .lean();
+  return devices.map((device) => ({
+    id: String(device._id),
+    label: device.label,
+    lastSeenAt: device.lastSeenAt.toISOString(),
+    expiresAt: device.expiresAt.toISOString(),
+    current: Boolean(currentDeviceId) && device.deviceId === currentDeviceId,
+  }));
 };
 
+//Removes one trusted device; DEVICE_NOT_FOUND if it is not this user's.
+export const revokeDevice = async (userId: Types.ObjectId, id: string): Promise<boolean> => {
+  const removed =
+    isValidObjectId(id) && (await Device.deleteOne({ _id: id, user: userId })).deletedCount > 0;
+  if (!removed) throw appError(ErrorCode.DEVICE_NOT_FOUND, 'That device is no longer on the list.');
+  return true;
+};
+
+//Forgets every trusted device of the user.
 export const revokeAllDevices = async (userId: Types.ObjectId): Promise<void> => {
   await Device.deleteMany({ user: userId });
 };

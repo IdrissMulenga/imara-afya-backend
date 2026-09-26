@@ -2,14 +2,15 @@ import type { Request, Response, NextFunction } from 'express';
 import type { Plugin } from 'graphql-yoga';
 import {
   NoSchemaIntrospectionCustomRule,
-  GraphQLError,
   Kind,
   type ASTNode,
   type DocumentNode,
   type ValidationContext,
 } from 'graphql';
 import { env } from '../../config/env.js';
+import { appError, ErrorCode } from '../errors.js';
 
+//Sets the security headers on every response (HSTS in production).
 export const securityHeaders = (_req: Request, res: Response, next: NextFunction): void => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -77,11 +78,9 @@ export const securityPlugin: Plugin = {
           const depth = depthOf(definition, fragments, new Set());
           if (depth > env.MAX_QUERY_DEPTH) {
             context.reportError(
-              new GraphQLError(
-                `Query is nested too deeply (${depth} levels, limit ${env.MAX_QUERY_DEPTH}).`,
-                {
-                  extensions: { code: 'QUERY_TOO_DEEP' },
-                }
+              appError(
+                ErrorCode.QUERY_TOO_DEEP,
+                `Query is nested too deeply (${depth} levels, limit ${env.MAX_QUERY_DEPTH}).`
               )
             );
           }

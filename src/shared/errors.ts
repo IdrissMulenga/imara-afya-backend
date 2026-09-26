@@ -1,4 +1,5 @@
 import { GraphQLError } from 'graphql';
+import { isDuplicateKey } from './upsert.js';
 
 //Error codes returned in extensions.code.
 
@@ -34,6 +35,7 @@ export const ErrorCode = {
   CONFIG_ERROR: 'CONFIG_ERROR',
 
   BAD_USER_INPUT: 'BAD_USER_INPUT',
+  QUERY_TOO_DEEP: 'QUERY_TOO_DEEP',
   NOT_FOUND: 'NOT_FOUND',
   RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL: 'INTERNAL',
@@ -53,11 +55,9 @@ export const handleError = (error: unknown, operation: string): GraphQLError => 
   if (error instanceof GraphQLError) return error;
 
   //Duplicate key on the users' email index: the email is already registered.
-  if (typeof error === 'object' && error !== null && 'code' in error) {
-    const duplicate = error as { code: number; keyPattern?: Record<string, unknown> };
-    if (duplicate.code === 11000 && duplicate.keyPattern && 'email' in duplicate.keyPattern) {
-      return appError(ErrorCode.EMAIL_TAKEN, 'That email address is already registered.');
-    }
+  const keyPattern = (error as { keyPattern?: Record<string, unknown> } | null)?.keyPattern;
+  if (isDuplicateKey(error) && keyPattern && 'email' in keyPattern) {
+    return appError(ErrorCode.EMAIL_TAKEN, 'That email address is already registered.');
   }
 
   console.error(`[error] ${operation}:`, error);

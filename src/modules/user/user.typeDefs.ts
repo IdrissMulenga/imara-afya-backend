@@ -21,6 +21,12 @@ export const userTypeDefs = /* GraphQL */ `
     waterGoalGlasses: Float!
     stepGoal: Int!
     sleepGoalHours: Float!
+    "Sleep schedule as HH:MM in the user's timezone; null when not set."
+    sleepBedtime: String
+    sleepWakeTime: String
+    "Schedule for nights ending on Saturday and Sunday; null means the same as weekdays."
+    sleepWeekendBedtime: String
+    sleepWeekendWakeTime: String
 
     createdAt: String!
   }
@@ -52,6 +58,7 @@ export const userTypeDefs = /* GraphQL */ `
     weightKg: Float
   }
 
+  "Omitted fields are unchanged; null clears any of the sleep schedule times."
   input PreferencesInput {
     language: Language
     units: Units
@@ -60,6 +67,10 @@ export const userTypeDefs = /* GraphQL */ `
     waterGoalGlasses: Float
     stepGoal: Int
     sleepGoalHours: Float
+    sleepBedtime: String
+    sleepWakeTime: String
+    sleepWeekendBedtime: String
+    sleepWeekendWakeTime: String
   }
 
   input DeleteAccountInput {

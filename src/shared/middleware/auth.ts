@@ -1,16 +1,14 @@
 import type { Request } from 'express';
-import { User, type IUser } from '../../modules/user/user.model.js';
-import { verifyToken } from '../../modules/auth/token.service.js';
+import { User, type IUser } from '../../modules/user/index.js';
+import { verifyToken } from '../../modules/auth/index.js';
 import { appError, ErrorCode } from '../errors.js';
-
-//Resolves the bearer token to a user. No token means no user; an invalid or
-//revoked token throws.
 
 export interface CallerIdentity {
   user?: IUser;
   sessionOrigin?: string;
 }
 
+//Resolves the bearer token to a user; no token means no user, a bad or revoked one throws.
 export const getUserFromRequest = async (req: Request): Promise<CallerIdentity> => {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) return {};

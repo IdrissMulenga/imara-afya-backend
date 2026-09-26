@@ -1,25 +1,15 @@
 # Imara Afya — Backend Deployment
 
-The backend is a stateless Node service: it builds to `dist/` and needs a MongoDB
-connection string and a JWT secret. Nothing is written to local disk, so any host
-that runs Node works — Render, Railway, Fly.io, a VPS, or a container platform.
+The backend is a Node service: it builds to `dist/` and needs a MongoDB connection
+string, a JWT secret and a Resend key for the email codes. The only thing it writes to
+disk is profile photos (`UPLOAD_DIR`), which need a persistent volume — see section 3.
+Any host that runs Node works: Render, Railway, Fly.io, a VPS, or a container platform.
 
 ---
 
 ## 1. Before you deploy
 
 Three things to clear first.
-
-### Remove the scratch files from git
-
-Two throwaway files used to print the GraphQL schema were committed by accident.
-`.gitignore` can't exclude an already-tracked file, so they need removing explicitly:
-
-```bash
-git rm --cached _sdl_check.mjs .sdlcheck.mjs
-```
-
-Then delete them from disk. Neither is imported by anything.
 
 ### Confirm `.env` was never committed
 
@@ -30,6 +20,13 @@ file was named `.gitIgnore`, which git only honours on case-insensitive filesyst
 
 If a `JWT_SECRET` or `MONGODB_URI` has ever been pushed anywhere public, rotate both
 before launch. Removing a file in a later commit does **not** remove it from history.
+
+### Set up email for the codes
+
+Signup, new-device login and password reset all send a six-digit code by email
+through [Resend](https://resend.com). Verify your domain at resend.com/domains and
+send from an address on it. The default test sender `onboarding@resend.dev` only
+delivers to the owner of the Resend account, so nobody else could sign up.
 
 ### Generate a real JWT secret
 
@@ -79,17 +76,22 @@ Set these on the host. Everything in `.env_sample` is listed here with what it d
 | Variable | Required | Value for production |
 | --- | --- | --- |
 | `MONGODB_URI` | yes | Atlas connection string |
-| `JWT_SECRET` | yes | the 48-byte random value generated above |
-| `NODE_ENV` | yes | `production` — this is what disables GraphiQL, hides error details, disables introspection and turns on HSTS |
+| `JWT_SECRET` | yes | the 48-byte random value generated above (at least 32 characters) |
+| `NODE_ENV` | yes | `production` — disables GraphiQL and introspection, turns on HSTS, and makes the checks below required |
+| `RESEND_API_KEY` | yes in production | Resend API key; without it no one can receive a code, so the server refuses to start |
+| `MAIL_FROM` | yes in practice | e.g. `Imara Afya <codes@yourdomain>` on your verified domain (default is Resend's test sender) |
+| `FRONTEND_URL` | yes in production | comma-separated allowed web origins. The phone app sends no `Origin`, so this only matters for a web build, but the server refuses to start without it; set your website's URL |
+| `UPLOAD_DIR` | recommended | folder for profile photos, default `uploads`. **Point it at a persistent volume**, or every deploy deletes everyone's photo |
+| `MAIL_REPLY_TO` | no | reply-to address on the code emails |
+| `MAIL_DEV_TO` | **leave unset** | development only: sends every code to one inbox; ignored in production |
 | `PORT` | usually not | most hosts inject it; the app falls back to 4000 |
-| `FRONTEND_URL` | optional | comma-separated origins. The Expo app sends no `Origin` header, so leave unset unless you ship a web build |
-| `RATE_LIMIT_WINDOW_MS` | no | defaults to 60000 |
-| `RATE_LIMIT_MAX` | no | defaults to 120 requests/min/IP |
-| `DB_POOL_SIZE` | no | defaults to 10. Keep `instances × DB_POOL_SIZE` under your Atlas connection limit |
-| `ALLOW_SELF_UPGRADE` | **leave unset** | setting it to `true` lets any user grant themselves the premium plan for free |
+| `RATE_LIMIT_WINDOW_MS` / `RATE_LIMIT_MAX` | no | per-IP limit, default 600 requests per 60 s |
+| `DB_POOL_SIZE` | no | default 10. Keep `instances × DB_POOL_SIZE` under your Atlas connection limit |
+| `MAX_UPLOAD_MB` | no | largest photo upload, default 10 |
+| `SESSION_DAYS`, `MAX_SESSION_DAYS`, `RESET_TOKEN_MINUTES`, `OTP_*`, `DEVICE_TRUST_DAYS`, `MAX_PASSWORD_ATTEMPTS`, `MAX_QUERY_DEPTH`, `JWT_ISSUER` | no | defaults as in `.env_sample` |
 
 `NODE_ENV=production` is the one that matters most. Without it the deployment serves
-a public GraphiQL playground and full stack traces.
+a public GraphiQL playground and schema introspection.
 
 ---
 
@@ -137,14 +139,13 @@ running the same two commands. Ask and I'll write it.
      -d '{"query":"{ __schema { types { name } } }"}'
    ```
    This should be refused, not answered.
-4. **Sign up a real account** through the app, then promote yourself to admin so
-   you can seed the hospital directory and guidance content:
-   ```
-   db.users.updateOne({ email: "you@example.com" }, { $set: { role: "admin" } })
-   ```
-5. **Point the app at it.** In the frontend, `lib/config.ts` currently targets
-   `localhost:5500` for development — it needs the deployed URL for any build that
-   isn't running against your machine.
+4. **Sign up a real account** through the app and check the code email arrives,
+   in the right language, from your own domain.
+5. **Point the app at it.** In the frontend's `eas.json`, replace
+   `https://REPLACE-WITH-YOUR-PRODUCTION-HOST/graphql` (and the preview one) with the
+   deployed `/graphql` URL before building.
+6. **Upload a profile photo, redeploy, and check it is still there.** If it is gone,
+   `UPLOAD_DIR` is not on a persistent volume.
 
 ---
 
@@ -152,19 +153,13 @@ running the same two commands. Ask and I'll write it.
 
 Deploying is safe; these are things to be honest with yourself about.
 
-- **Password reset doesn't deliver.** The whole flow works except sending the email
-  — see `src/services/mailService.ts`. In production `requestPasswordReset` returns
-  a clear error rather than pretending. Until an email provider is connected, a user
-  who forgets their password cannot recover the account, and you'll have to reset it
-  manually in the database.
 - **No error monitoring.** When something breaks in Bujumbura at 2am, nothing tells
   you. Sentry's free tier takes about ten minutes to add and is the highest-value
   thing you can do after deploying.
+- **No automated tests.** `AUTH_DESIGN.md` section 18 is the manual pass; run it
+  against the deployed server before telling anyone the URL.
 - **Rate-limit counters are in-process.** Fine on one instance. Run two and the
   effective limit doubles — move them to Redis before scaling horizontally.
-- **The hospital directory is empty until you fill `data/hospitals.json`.** Copy
-  `data/hospitals.example.json`, replace it with verified facilities, and commit it. The server
-  seeds an empty database automatically on boot — no command to remember, and nothing for a user
-  to ever run. Once the collection has data the boot seeder stays out of the way, so it can never
-  overwrite a correction made in production with a stale value from the file. To change existing
-  entries, run `npm run seed:hospitals` explicitly.
+- **Photos live on one disk.** A persistent volume keeps them across deploys, but
+  they are not in the database backups; back the volume up too, or move photos to
+  object storage (S3, Cloudflare R2) later.

@@ -38,6 +38,7 @@ export const tryNormalizeEmail = (raw: string): string | null => {
   }
 };
 
+//Throws WEAK_PASSWORD unless the password is 8-128 characters and not only spaces.
 export const checkPassword = (password: string): void => {
   if (password.length < PASSWORD_MIN) {
     throw appError(
@@ -65,7 +66,13 @@ export const checkOtpCode = (code: string): string => {
   return trimmed;
 };
 
-export const checkDeviceId = (deviceId: string): string => {
+//Checks a device identifier; a missing one is INVALID_DEVICE_ID with reason MISSING.
+export const checkDeviceId = (deviceId: string | null | undefined): string => {
+  if (!deviceId) {
+    throw appError(ErrorCode.INVALID_DEVICE_ID, 'This request is missing its device identifier.', {
+      reason: 'MISSING',
+    });
+  }
   const trimmed = deviceId.trim();
   if (trimmed.length < 8 || trimmed.length > 128 || !/^[\w-]+$/.test(trimmed)) {
     throw appError(ErrorCode.INVALID_DEVICE_ID, 'That device identifier is not valid.');
@@ -98,6 +105,15 @@ export const cleanText = (raw: string, maxLength: number, field: Field): string 
   return text;
 };
 
+//Checks a real calendar day written as YYYY-MM-DD.
+export const checkDay = (raw: string): string => {
+  const day = String(raw ?? '').trim();
+  if (!DAY_PATTERN.test(day) || addDays(day, 0) !== day) {
+    throw appError(ErrorCode.BAD_USER_INPUT, 'That date is not valid.', { reason: 'INVALID_DAY' });
+  }
+  return day;
+};
+
 //Today in the user's timezone, or the given day after checking it is a real,
 //past-or-present day at most maxBackdateDays ago.
 export const resolveDay = (
@@ -106,13 +122,9 @@ export const resolveDay = (
   maxBackdateDays: number
 ): string => {
   const today = dayInZone(new Date(), timezone);
-  const day = raw?.trim();
-  if (!day) return today;
+  if (!raw?.trim()) return today;
 
-  const parsed = Date.parse(`${day}T12:00:00Z`);
-  if (!DAY_PATTERN.test(day) || Number.isNaN(parsed) || addDays(day, 0) !== day) {
-    throw appError(ErrorCode.BAD_USER_INPUT, 'That date is not valid.', { reason: 'INVALID_DAY' });
-  }
+  const day = checkDay(raw);
   if (day > today) {
     throw appError(ErrorCode.BAD_USER_INPUT, 'You cannot log a day that has not happened yet.', {
       reason: 'FUTURE_DAY',
@@ -135,4 +147,13 @@ export const maskEmail = (email: string): string => {
   const domain = email.slice(at);
   if (name.length <= 2) return `${name[0]}***${domain}`;
   return `${name[0]}${'*'.repeat(Math.min(name.length - 2, 4))}${name.at(-1)}${domain}`;
+};
+
+//Checks a clock time written as HH:MM (24-hour).
+export const checkClockTime = (value: string): string => {
+  const trimmed = String(value).trim();
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(trimmed)) {
+    throw appError(ErrorCode.BAD_USER_INPUT, 'That time is not valid.', { reason: 'INVALID_TIME' });
+  }
+  return trimmed;
 };

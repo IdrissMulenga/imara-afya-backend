@@ -6,6 +6,7 @@ mongoose.set('strictQuery', true);
 //Queries fail immediately while disconnected instead of queueing.
 mongoose.set('bufferCommands', false);
 
+//Connects to MongoDB and logs connection changes.
 export const connectDB = async (): Promise<void> => {
   mongoose.connection.on('error', (e) => console.error('[db] error:', String(e)));
   mongoose.connection.on('disconnected', () => console.warn('[db] disconnected'));

@@ -1,19 +1,29 @@
-//Sets the day's check-in. An omitted note is left unchanged; day defaults to today.
+//Logs a new check-in now.
 export interface LogCheckInInput {
-  day?: string | null;
   mood: number;
   energy: number;
   note?: string | null;
 }
 
-export interface CheckInDay {
+export interface CheckInEntry {
+  id: string;
   day: string;
+  //ISO timestamp.
+  at: string;
   mood: number;
   energy: number;
   note: string;
 }
 
-//Averages over the check-ins logged in a window; null when there are none.
+//One day's check-ins with that day's average mood and energy.
+export interface CheckInDay {
+  day: string;
+  mood: number;
+  energy: number;
+  entries: CheckInEntry[];
+}
+
+//Averages over the days checked in within a window; null when there are none.
 export interface CheckInAverages {
   days: number;
   count: number;
@@ -22,7 +32,8 @@ export interface CheckInAverages {
 }
 
 export interface CheckInSummary {
-  today: CheckInDay | null;
+  today: CheckInEntry[];
+  latest: CheckInEntry | null;
   streak: number;
   week: CheckInAverages;
   month: CheckInAverages;

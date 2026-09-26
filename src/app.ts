@@ -17,6 +17,7 @@ import { localizeErrors } from './shared/localize.js';
 import { uploadRouter, avatarDir } from './modules/upload/index.js';
 import type { Context } from './shared/context.js';
 
+//Builds the express app: headers, CORS, uploads, health check, rate limits and GraphQL.
 export const createApp = (): Express => {
   const app = express();
 
