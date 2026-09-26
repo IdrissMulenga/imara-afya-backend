@@ -26,7 +26,7 @@ npm run format     # prettier --write on src/**
 
 No test runner is configured. `AUTH_DESIGN.md` section 18 is the manual pass.
 
-Copy `.env_sample` to `.env` first. `MONGODB_URI` and `JWT_SECRET` are
+Create a `.env` with the variables read in `src/config/env.ts` first. `MONGODB_URI` and `JWT_SECRET` are
 required — `src/config/env.ts` throws without them, deliberately, so a
 misconfigured deploy never opens its port.
 

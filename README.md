@@ -9,7 +9,7 @@ in front of managed MongoDB.
 ## Running it
 
 ```bash
-cp .env_sample .env     # fill MONGODB_URI and JWT_SECRET
+# create .env with MONGODB_URI and JWT_SECRET (see src/config/env.ts)
 npm install
 npm run dev             # nodemon + tsx, no build step
 ```

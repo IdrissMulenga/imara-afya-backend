@@ -1,7 +1,7 @@
 /node_modules
 .env
 .env.*
-!.env_sample
+.env_sample
 /dist
 imara-afya.postman_collection.json
 
