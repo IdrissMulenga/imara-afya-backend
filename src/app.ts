@@ -1,3 +1,4 @@
+import path from 'node:path';
 import express, { type Express, type Request, type Response, type RequestHandler } from 'express';
 import cors from 'cors';
 import { createYoga } from 'graphql-yoga';
@@ -49,6 +50,11 @@ export const createApp = (): Express => {
   );
 
   app.use('/upload', ipRateLimitFor('upload'), uploadRouter());
+
+  //Public privacy policy page, linked from the app stores (not rate limited).
+  app.get('/privacy', (_req, res) => {
+    res.sendFile(path.resolve(process.cwd(), 'public', 'privacy.html'));
+  });
 
   //Health check for uptime monitors (not rate limited).
   app.get('/health', (_req, res) => {
