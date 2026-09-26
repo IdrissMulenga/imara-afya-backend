@@ -19,3 +19,10 @@ pnpm-lock.yaml
 # Uploaded avatars. User data, never source — and it must be a mounted volume
 # in production or every deploy loses everyone photo.
 uploads/
+
+# Private notes and business documents: kept on this computer, not uploaded.
+DEPLOY.md
+AUTH_DESIGN.md
+SCALING.md
+*.docx
+Claude outputs/
