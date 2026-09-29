@@ -165,7 +165,7 @@ the database after they ask for their account to be deleted.
 ## The request pipeline (`src/app.ts`)
 
 security headers → CORS → 1mb body cap → `/uploads/avatars` (static files) →
-`/upload` (own per-IP budget) → `/health` → per-IP rate limit → graphql-yoga (depth limit + introspection control → per-operation rate limit →
+`/upload` (own per-IP budget) → `/health` → per-IP rate limit → graphql-yoga (depth limit + 10 top-level fields per query + introspection control → per-operation rate limit →
 context → resolvers)
 
 Order matters:
