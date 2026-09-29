@@ -1,6 +1,7 @@
 import path from 'node:path';
 import express, { type Express, type Request, type Response, type RequestHandler } from 'express';
 import cors from 'cors';
+import compression from 'compression';
 import { createYoga } from 'graphql-yoga';
 import { GraphQLError } from 'graphql';
 import { appError, ErrorCode } from './shared/errors.js';
@@ -26,6 +27,9 @@ export const createApp = (): Express => {
   app.disable('x-powered-by');
 
   app.use(securityHeaders);
+
+  //Gzips responses over 1 KB; GraphQL JSON shrinks to about a fifth, which matters on 2G/3G.
+  app.use(compression({ threshold: 1024 }));
 
   app.use(
     cors({
