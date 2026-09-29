@@ -10,6 +10,8 @@ import { env } from '../../config/env.js';
 
 const SIDE = 512;
 const QUALITY = 82;
+//Largest image decoded, so a small file cannot expand into gigabytes of pixels.
+const MAX_PIXELS = 50_000_000;
 
 //Public URL prefix; stored URLs are relative to the API origin.
 const PUBLIC_PREFIX = '/uploads/avatars';
@@ -35,7 +37,7 @@ export const saveAvatar = async (user: IUser, bytes: Buffer | undefined): Promis
 
   let processed: Buffer;
   try {
-    processed = await sharp(bytes, { failOn: 'error' })
+    processed = await sharp(bytes, { failOn: 'error', limitInputPixels: MAX_PIXELS })
       //Applies EXIF orientation before metadata is stripped.
       .rotate()
       .resize(SIDE, SIDE, { fit: 'cover', position: 'centre', withoutEnlargement: false })

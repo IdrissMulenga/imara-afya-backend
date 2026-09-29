@@ -60,6 +60,28 @@ const depthOf = (
   }
 };
 
+//Most top-level fields (aliases included) one operation may ask for; the app uses one.
+const MAX_ROOT_FIELDS = 10;
+
+//Counts an operation's top-level fields, following fragments once each.
+const rootFieldCount = (
+  set: { selections: readonly ASTNode[] },
+  fragments: Map<string, ASTNode>,
+  seen: Set<string>
+): number =>
+  set.selections.reduce((total, selection) => {
+    if (selection.kind === Kind.FIELD) return total + 1;
+    if (selection.kind === Kind.INLINE_FRAGMENT) {
+      return total + rootFieldCount(selection.selectionSet, fragments, seen);
+    }
+    if (selection.kind !== Kind.FRAGMENT_SPREAD || seen.has(selection.name.value)) return total;
+    seen.add(selection.name.value);
+    const fragment = fragments.get(selection.name.value);
+    return fragment && fragment.kind === Kind.FRAGMENT_DEFINITION
+      ? total + rootFieldCount(fragment.selectionSet, fragments, seen)
+      : total;
+  }, 0);
+
 export const securityPlugin: Plugin = {
   onValidate({ addValidationRule }) {
     if (env.IS_PRODUCTION) addValidationRule(NoSchemaIntrospectionCustomRule);
@@ -75,6 +97,15 @@ export const securityPlugin: Plugin = {
 
         for (const definition of document.definitions) {
           if (definition.kind !== Kind.OPERATION_DEFINITION) continue;
+          const fields = rootFieldCount(definition.selectionSet, fragments, new Set());
+          if (fields > MAX_ROOT_FIELDS) {
+            context.reportError(
+              appError(
+                ErrorCode.QUERY_TOO_LARGE,
+                `Query asks for too many fields at once (${fields}, limit ${MAX_ROOT_FIELDS}).`
+              )
+            );
+          }
           const depth = depthOf(definition, fragments, new Set());
           if (depth > env.MAX_QUERY_DEPTH) {
             context.reportError(

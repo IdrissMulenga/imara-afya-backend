@@ -142,20 +142,21 @@ export const verifyCode = async (params: {
     throw appError(ErrorCode.OTP_EXPIRED, 'That code has expired. Please ask for a new one.');
   }
 
-  if (otp.attempts >= env.OTP_MAX_ATTEMPTS) {
+  //Uses up one attempt before comparing, in one atomic step, so guesses sent in parallel
+  //cannot get past the limit.
+  const counted = await Otp.findOneAndUpdate(
+    { _id: otp._id, consumedAt: null, attempts: { $lt: env.OTP_MAX_ATTEMPTS } },
+    { $inc: { attempts: 1 } },
+    { returnDocument: 'after', projection: { attempts: 1 } }
+  ).lean();
+
+  if (!counted) {
     await retire(otp._id);
     throw tooManyAttempts();
   }
 
   if (!(await bcrypt.compare(submitted, otp.codeHash))) {
-    //Counts the failed attempt atomically.
-    const counted = await Otp.findOneAndUpdate(
-      { _id: otp._id },
-      { $inc: { attempts: 1 } },
-      { returnDocument: 'after', projection: { attempts: 1 } }
-    ).lean();
-
-    const attempts = counted?.attempts ?? otp.attempts + 1;
+    const attempts = counted.attempts;
 
     if (attempts >= env.OTP_MAX_ATTEMPTS) {
       await retire(otp._id);
