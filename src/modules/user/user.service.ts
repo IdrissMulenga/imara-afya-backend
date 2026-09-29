@@ -26,8 +26,8 @@ const clockTime = (value: string | null) => orNull(value, checkClockTime);
 
 //Updates the given profile fields; null clears height, weight or birth date.
 export const updateProfile = async (user: IUser, input: UpdateProfileInput): Promise<IUser> => {
-  if (input.name !== undefined) user.name = cleanText(input.name, 80, 'name');
-  if (input.gender !== undefined) user.gender = input.gender;
+  if (input.name != null) user.name = cleanText(input.name, 80, 'name');
+  if (input.gender != null) user.gender = input.gender;
   if (input.heightCm !== undefined) {
     user.heightCm = orNull(input.heightCm, (cm) => inRange(cm, 50, 260, 'height'));
   }
@@ -52,19 +52,20 @@ export const updateProfile = async (user: IUser, input: UpdateProfileInput): Pro
 
 //Updates language, units, timezone, goals and the sleep schedule.
 export const setPreferences = async (user: IUser, input: PreferencesInput): Promise<IUser> => {
-  if (input.language !== undefined) user.language = input.language;
-  if (input.units !== undefined) user.units = input.units;
-  if (input.timezone !== undefined) user.timezone = checkTimezone(input.timezone);
-  if (input.cycleTrackingEnabled !== undefined) {
+  //Missing or null leaves a setting as it is; only the sleep times can be cleared with null.
+  if (input.language != null) user.language = input.language;
+  if (input.units != null) user.units = input.units;
+  if (input.timezone != null) user.timezone = checkTimezone(input.timezone);
+  if (input.cycleTrackingEnabled != null) {
     user.cycleTrackingEnabled = input.cycleTrackingEnabled;
   }
-  if (input.waterGoalGlasses !== undefined) {
+  if (input.waterGoalGlasses != null) {
     user.waterGoalGlasses = inRange(input.waterGoalGlasses, 1, 30, 'waterGoal');
   }
-  if (input.stepGoal !== undefined) {
+  if (input.stepGoal != null) {
     user.stepGoal = inRange(input.stepGoal, 500, 100_000, 'stepGoal');
   }
-  if (input.sleepGoalHours !== undefined) {
+  if (input.sleepGoalHours != null) {
     user.sleepGoalHours = inRange(input.sleepGoalHours, 3, 14, 'sleepGoal');
   }
   if (input.sleepBedtime !== undefined) user.sleepBedtime = clockTime(input.sleepBedtime);
