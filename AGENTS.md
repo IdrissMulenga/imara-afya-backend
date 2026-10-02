@@ -16,12 +16,12 @@ specification this code implements, down to the error codes.
 ## Commands
 
 ```bash
-npm run dev        # nodemon + tsx on src/server.ts, no build step
-npm run build      # tsc -> dist/
-npm start          # node dist/server.js (build first)
-npm run lint       # eslint src --ext .ts,.js
-npm run lint:fix
-npm run format     # prettier --write on src/**
+yarn dev           # nodemon + tsx on src/server.ts, no build step
+yarn build         # tsc -> dist/
+yarn start         # node dist/server.js (build first)
+yarn lint          # eslint src --ext .ts,.js
+yarn lint:fix
+yarn format        # prettier --write on src/**
 ```
 
 No test runner is configured. `AUTH_DESIGN.md` section 18 is the manual pass.

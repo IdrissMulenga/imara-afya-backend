@@ -14,7 +14,9 @@ _sdl_check.mjs
 npm-debug.log*
 .DS_Store
 Thumbs.db
+# yarn.lock is the only lockfile.
 pnpm-lock.yaml
+package-lock.json
 
 # Uploaded avatars. User data, never source — and it must be a mounted volume
 # in production or every deploy loses everyone photo.

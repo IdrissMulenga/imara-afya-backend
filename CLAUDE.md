@@ -16,13 +16,13 @@ specification this code implements, down to the error codes.
 ## Commands
 
 ```bash
-npm run dev        # nodemon + tsx on src/server.ts, no build step
-npm run build      # tsc -> dist/
-npm start          # node dist/server.js (build first)
-npm run lint       # eslint src --ext .ts,.js
-npm run lint:fix
-npm run format     # prettier --write on src/**
-npm test           # node:test on src/**/*.test.ts (test/setup.mjs supplies placeholder env)
+yarn dev           # nodemon + tsx on src/server.ts, no build step
+yarn build         # tsc -> dist/
+yarn start         # node dist/server.js (build first)
+yarn lint          # eslint src --ext .ts,.js
+yarn lint:fix
+yarn format        # prettier --write on src/**
+yarn test          # node:test on src/**/*.test.ts (test/setup.mjs supplies placeholder env)
 ```
 
 Unit tests (`*.test.ts` beside the code, `node:test`) cover pure logic only; `AUTH_DESIGN.md` section 18 is the manual pass.

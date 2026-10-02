@@ -10,13 +10,13 @@ in front of managed MongoDB.
 
 ```bash
 # create .env with MONGODB_URI and JWT_SECRET (see src/config/env.ts)
-npm install
-npm run dev             # nodemon + tsx, no build step
+yarn install
+yarn dev                # nodemon + tsx, no build step
 ```
 
 ```bash
-npm run build && npm start   # production
-npm run lint                 # eslint (prettier runs as a rule)
+yarn build && yarn start     # production
+yarn lint                    # eslint (prettier runs as a rule)
 ```
 
 Health check: `GET /health` — 200 when the database is reachable, 503 when it
