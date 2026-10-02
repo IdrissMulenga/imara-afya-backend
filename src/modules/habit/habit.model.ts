@@ -19,8 +19,8 @@ const habitLogSchema = new Schema<IHabitLog>(
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     day: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     waterGlasses: { type: Number, default: 0, min: 0 },
-    steps: { type: Number, default: null, min: 0, nullable: true },
-    sleepHours: { type: Number, default: null, min: 0, nullable: true },
+    steps: { type: Number, default: null, min: 0 },
+    sleepHours: { type: Number, default: null, min: 0 },
   },
   { timestamps: true }
 );

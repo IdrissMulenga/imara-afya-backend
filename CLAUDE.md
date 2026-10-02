@@ -22,9 +22,10 @@ npm start          # node dist/server.js (build first)
 npm run lint       # eslint src --ext .ts,.js
 npm run lint:fix
 npm run format     # prettier --write on src/**
+npm test           # node:test on src/**/*.test.ts (test/setup.mjs supplies placeholder env)
 ```
 
-No test runner is configured. `AUTH_DESIGN.md` section 18 is the manual pass.
+Unit tests (`*.test.ts` beside the code, `node:test`) cover pure logic only; `AUTH_DESIGN.md` section 18 is the manual pass.
 
 Create a `.env` with the variables read in `src/config/env.ts` first. `MONGODB_URI` and `JWT_SECRET` are
 required — `src/config/env.ts` throws without them, deliberately, so a

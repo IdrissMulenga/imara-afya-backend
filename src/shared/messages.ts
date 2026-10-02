@@ -44,6 +44,13 @@ const en: Table = {
   [ErrorCode.DEVICE_NOT_FOUND]: 'That device is no longer on the list.',
   [ErrorCode.INVALID_DEVICE_ID]: 'That device identifier is not valid.',
   'INVALID_DEVICE_ID.MISSING': 'This request is missing its device identifier.',
+  [ErrorCode.INVALID_DEVICE_SECRET]:
+    'This device could not be verified. Please update the app and try again.',
+  'INVALID_DEVICE_SECRET.MISSING':
+    'This device could not be verified. Please update the app and try again.',
+  'BAD_USER_INPUT.DEVICE_MANAGED': '{field} comes from your band and cannot be entered by hand.',
+  [ErrorCode.QUERY_TOO_DEEP]: 'That request is too large. Please update the app.',
+  [ErrorCode.QUERY_TOO_LARGE]: 'That request is too large. Please update the app.',
 
   [ErrorCode.INVALID_BAND_ID]: 'That band identifier is not valid.',
   [ErrorCode.BAND_NOT_PAIRED]: 'That band is not paired with your account.',
@@ -114,6 +121,14 @@ const fr: Table = {
   [ErrorCode.DEVICE_NOT_FOUND]: 'Cet appareil n’est plus dans la liste.',
   [ErrorCode.INVALID_DEVICE_ID]: 'Cet identifiant d’appareil n’est pas valide.',
   'INVALID_DEVICE_ID.MISSING': 'L’identifiant de l’appareil manque dans cette requête.',
+  [ErrorCode.INVALID_DEVICE_SECRET]:
+    'Cet appareil n’a pas pu être vérifié. Mettez l’application à jour et réessayez.',
+  'INVALID_DEVICE_SECRET.MISSING':
+    'Cet appareil n’a pas pu être vérifié. Mettez l’application à jour et réessayez.',
+  'BAD_USER_INPUT.DEVICE_MANAGED':
+    '{field} : cette valeur vient de votre bracelet et ne peut pas être saisie à la main.',
+  [ErrorCode.QUERY_TOO_DEEP]: 'Cette requête est trop volumineuse. Mettez l’application à jour.',
+  [ErrorCode.QUERY_TOO_LARGE]: 'Cette requête est trop volumineuse. Mettez l’application à jour.',
 
   [ErrorCode.INVALID_BAND_ID]: 'Cet identifiant de bracelet n’est pas valide.',
   [ErrorCode.BAND_NOT_PAIRED]: 'Ce bracelet n’est pas associé à votre compte.',
@@ -183,6 +198,14 @@ const sw: Table = {
   [ErrorCode.DEVICE_NOT_FOUND]: 'Kifaa hicho hakipo tena kwenye orodha.',
   [ErrorCode.INVALID_DEVICE_ID]: 'Kitambulisho cha kifaa si sahihi.',
   'INVALID_DEVICE_ID.MISSING': 'Ombi hili halina kitambulisho cha kifaa.',
+  [ErrorCode.INVALID_DEVICE_SECRET]:
+    'Kifaa hiki hakikuweza kuthibitishwa. Sasisha programu kisha ujaribu tena.',
+  'INVALID_DEVICE_SECRET.MISSING':
+    'Kifaa hiki hakikuweza kuthibitishwa. Sasisha programu kisha ujaribu tena.',
+  'BAD_USER_INPUT.DEVICE_MANAGED':
+    '{field}: thamani hii inatoka kwenye bangili yako na haiwezi kuandikwa kwa mkono.',
+  [ErrorCode.QUERY_TOO_DEEP]: 'Ombi hili ni kubwa mno. Sasisha programu.',
+  [ErrorCode.QUERY_TOO_LARGE]: 'Ombi hili ni kubwa mno. Sasisha programu.',
 
   [ErrorCode.INVALID_BAND_ID]: 'Kitambulisho cha bangili si sahihi.',
   [ErrorCode.BAND_NOT_PAIRED]: 'Bangili hiyo haijaunganishwa na akaunti yako.',
@@ -252,6 +275,15 @@ const rn: Table = {
   [ErrorCode.DEVICE_NOT_FOUND]: 'Ico gikoresho ntikiri ku rutonde.',
   [ErrorCode.INVALID_DEVICE_ID]: 'Ico kiranga igikoresho si co.',
   'INVALID_DEVICE_ID.MISSING': 'Iki gisabisho ntikirimwo ikiranga igikoresho.',
+  [ErrorCode.INVALID_DEVICE_SECRET]:
+    'Iki gikoresho nticashoboye kwemezwa. Shiramwo verisiyo nshasha y’iporogaramu hanyuma ugerageze.',
+  'INVALID_DEVICE_SECRET.MISSING':
+    'Iki gikoresho nticashoboye kwemezwa. Shiramwo verisiyo nshasha y’iporogaramu hanyuma ugerageze.',
+  'BAD_USER_INPUT.DEVICE_MANAGED': '{field}: biva ku gikomo cawe, ntibishobora kwandikwa n’intoke.',
+  [ErrorCode.QUERY_TOO_DEEP]:
+    'Iki gisabisho ni kinini cane. Shiramwo verisiyo nshasha y’iporogaramu.',
+  [ErrorCode.QUERY_TOO_LARGE]:
+    'Iki gisabisho ni kinini cane. Shiramwo verisiyo nshasha y’iporogaramu.',
 
   [ErrorCode.INVALID_BAND_ID]: 'Ico kiranga igikomo si co.',
   [ErrorCode.BAND_NOT_PAIRED]: 'Ico gikomo ntikihujwe na konte yawe.',

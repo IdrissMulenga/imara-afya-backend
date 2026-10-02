@@ -20,6 +20,9 @@ export const getUser = async (id: string): Promise<IUser> => {
   return user;
 };
 
+//Earliest birth year accepted.
+const MIN_BIRTH_YEAR = 1900;
+
 //null clears a field; any other value is checked.
 const orNull = <T, R>(value: T | null, check: (value: T) => R): R | null =>
   value === null ? null : check(value);
@@ -39,7 +42,11 @@ export const updateProfile = async (user: IUser, input: UpdateProfileInput): Pro
   if (input.birthDate !== undefined) {
     user.birthDate = orNull(input.birthDate, (raw) => {
       const parsed = new Date(raw);
-      if (Number.isNaN(parsed.getTime()) || parsed > new Date()) {
+      if (
+        Number.isNaN(parsed.getTime()) ||
+        parsed > new Date() ||
+        parsed.getUTCFullYear() < MIN_BIRTH_YEAR
+      ) {
         throw appError(ErrorCode.BAD_USER_INPUT, 'That date of birth is not valid.', {
           reason: 'INVALID_BIRTH_DATE',
         });

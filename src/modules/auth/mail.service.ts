@@ -9,10 +9,9 @@ const RESEND_URL = 'https://api.resend.com/emails';
 const TIMEOUT_MS = 30_000;
 
 type Language = 'en' | 'fr' | 'sw' | 'rn';
-type Locale = 'en' | 'fr' | 'sw';
 
-//Email copy per purpose and language. 'rn' falls back to English.
-const COPY: Record<OtpPurpose, Record<Locale, { subject: string; line: string }>> = {
+//Email copy per purpose and language.
+const COPY: Record<OtpPurpose, Record<Language, { subject: string; line: string }>> = {
   SIGNUP: {
     en: { subject: 'is your Imara Afya code', line: 'Confirm your email address with this code.' },
     fr: {
@@ -23,6 +22,10 @@ const COPY: Record<OtpPurpose, Record<Locale, { subject: string; line: string }>
       subject: 'ni namba yako ya Imara Afya',
       line: 'Thibitisha barua pepe yako kwa namba hii.',
     },
+    rn: {
+      subject: 'ni zo nomero zawe za Imara Afya',
+      line: 'Emeza imeyili yawe ukoresheje izi nomero.',
+    },
   },
   LOGIN: {
     en: { subject: '— new sign-in to Imara Afya', line: 'Use this code to finish signing in.' },
@@ -31,6 +34,10 @@ const COPY: Record<OtpPurpose, Record<Locale, { subject: string; line: string }>
       line: 'Utilisez ce code pour terminer la connexion.',
     },
     sw: { subject: '— kuingia kupya Imara Afya', line: 'Tumia namba hii kumaliza kuingia.' },
+    rn: {
+      subject: '— kwinjira gushasha muri Imara Afya',
+      line: 'Koresha izi nomero kugira uheze kwinjira.',
+    },
   },
   RESET: {
     en: {
@@ -42,23 +49,26 @@ const COPY: Record<OtpPurpose, Record<Locale, { subject: string; line: string }>
       line: 'Utilisez ce code pour changer votre mot de passe.',
     },
     sw: { subject: '— badilisha nywila yako', line: 'Tumia namba hii kuweka nywila mpya.' },
+    rn: {
+      subject: '— hindura ijambo ryibanga ryawe',
+      line: 'Koresha izi nomero kugira ushireho ijambo ryibanga rishasha.',
+    },
   },
 };
 
-const WARNING: Record<Locale, string> = {
+const WARNING: Record<Language, string> = {
   en: "If this wasn't you, change your password.",
   fr: "Si ce n'était pas vous, changez votre mot de passe.",
   sw: 'Kama hukuwa wewe, badilisha nywila yako.',
+  rn: 'Nimba atari wewe, hindura ijambo ryibanga ryawe.',
 };
 
-const EXPIRES: Record<Locale, (minutes: number) => string> = {
+const EXPIRES: Record<Language, (minutes: number) => string> = {
   en: (m) => `This code expires in ${m} minutes.`,
   fr: (m) => `Ce code expire dans ${m} minutes.`,
   sw: (m) => `Namba hii itaisha muda baada ya dakika ${m}.`,
+  rn: (m) => `Izi nomero zizorangira mu minota ${m}.`,
 };
-
-const pickLocale = (language: Language): Locale =>
-  language === 'fr' || language === 'sw' ? language : 'en';
 
 //Emails a code in the user's language (logs it instead in development without a key).
 export const sendOtpEmail = async (params: {
@@ -67,7 +77,7 @@ export const sendOtpEmail = async (params: {
   purpose: OtpPurpose;
   language: Language;
 }): Promise<void> => {
-  const locale = pickLocale(params.language);
+  const locale = params.language;
   const copy = COPY[params.purpose][locale];
   const warning = params.purpose === 'SIGNUP' ? '' : WARNING[locale];
 

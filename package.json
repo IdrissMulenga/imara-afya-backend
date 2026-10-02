@@ -14,7 +14,8 @@
     "dev": "nodemon --exec tsx src/server.ts",
     "lint": "eslint src --ext .ts,.js",
     "lint:fix": "eslint src --ext .ts,.js --fix",
-    "format": "prettier --write \"src/**/*.{ts,js,json,md,graphql}\""
+    "format": "prettier --write \"src/**/*.{ts,js,json,md,graphql}\"",
+    "test": "node --import tsx --import ./test/setup.mjs --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

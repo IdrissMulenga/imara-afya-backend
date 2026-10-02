@@ -61,6 +61,16 @@ export const appError = (
 export const handleError = (error: unknown, operation: string): GraphQLError => {
   if (error instanceof GraphQLError) return error;
 
+  //A schema validator or bad id the service did not catch: the input was wrong, not the server.
+  const name = (error as { name?: unknown } | null)?.name;
+  if (name === 'ValidationError' || name === 'CastError') {
+    console.warn(`[error] ${operation}: rejected input:`, String(error));
+    return appError(
+      ErrorCode.BAD_USER_INPUT,
+      'Some of that is not valid. Please check and try again.'
+    );
+  }
+
   //Duplicate key on the users' email index: the email is already registered.
   const keyPattern = (error as { keyPattern?: Record<string, unknown> } | null)?.keyPattern;
   if (isDuplicateKey(error) && keyPattern && 'email' in keyPattern) {
