@@ -32,12 +32,3 @@ const checkInSchema = new Schema<ICheckIn>(
 checkInSchema.index({ user: 1, day: -1, at: -1 });
 
 export const CheckIn = model<ICheckIn>('CheckIn', checkInSchema);
-
-//Drops the old one-check-in-per-day unique index, if the database still has it.
-export const dropDailyUniqueIndex = async (): Promise<void> => {
-  const indexes = await CheckIn.collection.indexes().catch(() => []);
-  const old = indexes.find(
-    (index) => index.unique && Object.keys(index.key).join(',') === 'user,day'
-  );
-  if (old?.name) await CheckIn.collection.dropIndex(old.name);
-};

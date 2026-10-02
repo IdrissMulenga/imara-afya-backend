@@ -2,7 +2,19 @@ import type { Server } from 'node:http';
 import { env, envWarnings } from './config/env.js';
 import { connectDB, disconnectDB } from './config/db.js';
 import { createApp } from './app.js';
-import { dropDailyUniqueIndex } from './modules/checkin/index.js';
+import { purgeDeletedUsers } from './modules/user/index.js';
+
+//How often interrupted account deletions are finished.
+const PURGE_INTERVAL_MS = 60 * 60 * 1000;
+
+//Finishes interrupted account deletions, logging rather than throwing.
+const purge = (): void => {
+  purgeDeletedUsers()
+    .then((erased) => {
+      if (erased > 0) console.log(`[user] finished erasing ${erased} deleted account(s)`);
+    })
+    .catch((error) => console.error('[user] deleted-account sweep failed:', error));
+};
 
 //Connects to the database, then starts the HTTP server.
 
@@ -12,9 +24,9 @@ const start = async (): Promise<void> => {
   }
 
   await connectDB();
-  await dropDailyUniqueIndex().catch((error) => {
-    console.warn('[db] could not drop the old daily check-in index:', error);
-  });
+
+  purge();
+  setInterval(purge, PURGE_INTERVAL_MS).unref();
 
   const app = createApp();
   const server: Server = app.listen(env.PORT, () => {

@@ -4,6 +4,7 @@ export interface SignUpInput {
   email: string;
   password: string;
   deviceId: string;
+  deviceSecret: string;
   deviceLabel?: string;
   language?: 'en' | 'fr' | 'sw' | 'rn';
 }
@@ -12,13 +13,19 @@ export interface LoginInput {
   email: string;
   password: string;
   deviceId: string;
+  deviceSecret?: string;
   deviceLabel?: string;
 }
 
 export interface VerifyOtpInput {
   code: string;
-  deviceId?: string;
+  deviceId: string;
+  deviceSecret: string;
   deviceLabel?: string;
+}
+
+export interface VerifyEmailOtpInput {
+  code: string;
 }
 
 export interface VerifyResetOtpInput {
@@ -30,6 +37,7 @@ export interface ResetPasswordInput {
   resetToken: string;
   password: string;
   deviceId: string;
+  deviceSecret: string;
   deviceLabel?: string;
 }
 

@@ -11,6 +11,8 @@ export interface SessionClaims {
   userId: string;
   tokenVersion: number;
   origin: string;
+  //The device signed in with; absent on tokens issued before it was recorded.
+  deviceId?: string;
 }
 
 export interface ResetClaims {
@@ -34,9 +36,18 @@ const decode = (token: string): jwt.JwtPayload =>
     issuer: env.JWT_ISSUER,
   }) as jwt.JwtPayload;
 
-//Signs a session token; origin is the time of the original sign-in.
-export const signToken = (userId: string, tokenVersion: number, origin = new Date()): string =>
-  sign({ v: tokenVersion, o: origin.toISOString() }, userId, `${env.SESSION_DAYS}d`);
+//Signs a session token; origin is the time of the original sign-in, deviceId the device used.
+export const signToken = (
+  userId: string,
+  tokenVersion: number,
+  deviceId: string | undefined,
+  origin = new Date()
+): string =>
+  sign(
+    { v: tokenVersion, o: origin.toISOString(), ...(deviceId ? { d: deviceId } : {}) },
+    userId,
+    `${env.SESSION_DAYS}d`
+  );
 
 //Reads a session token, or throws SESSION_EXPIRED / UNAUTHENTICATED.
 export const verifyToken = (token: string): SessionClaims => {
@@ -45,7 +56,12 @@ export const verifyToken = (token: string): SessionClaims => {
     if (!payload.sub || typeof payload.v !== 'number' || typeof payload.o !== 'string') {
       throw appError(ErrorCode.UNAUTHENTICATED, 'Your session is not valid.');
     }
-    return { userId: payload.sub, tokenVersion: payload.v, origin: payload.o };
+    return {
+      userId: payload.sub,
+      tokenVersion: payload.v,
+      origin: payload.o,
+      deviceId: typeof payload.d === 'string' ? payload.d : undefined,
+    };
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
       throw appError(ErrorCode.SESSION_EXPIRED, 'Your session has expired. Please sign in.');

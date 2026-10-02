@@ -16,6 +16,7 @@ import { env } from '../../config/env.js';
 import { ErrorCode } from '../errors.js';
 import { sendError } from '../http.js';
 import type { Context } from '../context.js';
+import { verifyToken } from '../../modules/auth/index.js';
 
 //In-memory rate-limit counters (per process).
 type Bucket = { count: number; resetAt: number };
@@ -57,15 +58,34 @@ const hit = (key: string, windowMs: number, max: number) => {
 const key = (...parts: string[]): string =>
   createHash('sha256').update(parts.join(':')).digest('hex').slice(0, 32);
 
-//Per-IP rate-limit middleware; each scope has its own bucket.
-export const ipRateLimitFor =
-  (scope: string) =>
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+//Limit multiplier outside production.
+const RELAX = env.IS_PRODUCTION ? 1 : 20;
+
+type Budget = { windowMs: number; max: number };
+
+//Whose budget a request uses: the signed-in user when the bearer token verifies (no database
+//read), otherwise the IP. Mobile carriers put many people behind one IP.
+const requester = (req: Request): string => {
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) {
+    try {
+      return `user:${verifyToken(header.slice(7).trim()).userId}`;
+    } catch {
+      //An invalid token counts against the IP.
+    }
+  }
+  return `ip:${req.ip ?? 'unknown'}`;
+};
+
+//Rate-limit middleware per user or IP; each scope has its own bucket.
+export const rateLimitFor =
+  (scope: string, budget: Budget) =>
   (req: Request, res: Response, next: NextFunction): void => {
-    const result = hit(
-      key(scope, req.ip ?? 'unknown'),
-      env.RATE_LIMIT_WINDOW_MS,
-      env.RATE_LIMIT_MAX
-    );
+    const result = hit(key(scope, requester(req)), budget.windowMs, budget.max);
 
     if (!result.allowed) {
       res.setHeader('Retry-After', String(result.retryAfterSeconds));
@@ -82,16 +102,15 @@ export const ipRateLimitFor =
     next();
   };
 
-export const ipRateLimit = ipRateLimitFor('ip');
+//Every GraphQL request.
+export const requestRateLimit = rateLimitFor('request', {
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  max: env.RATE_LIMIT_MAX,
+});
 
-const MINUTE = 60_000;
-const HOUR = 60 * MINUTE;
-const DAY = 24 * HOUR;
+//Avatar uploads: each one can hold MAX_UPLOAD_MB in memory while it is re-encoded.
+export const uploadRateLimit = rateLimitFor('upload', { windowMs: 10 * MINUTE, max: 20 * RELAX });
 
-//Limit multiplier outside production.
-const RELAX = env.IS_PRODUCTION ? 1 : 20;
-
-type Budget = { windowMs: number; max: number };
 type Rule = {
   budgets: Budget[];
   keyBy: 'user' | 'ip' | 'ip+email';
@@ -114,8 +133,8 @@ const RULES: Record<string, Rule> = {
   signup: {
     keyBy: 'ip',
     budgets: [
-      { windowMs: 10 * MINUTE, max: 20 },
-      { windowMs: DAY, max: 200 },
+      { windowMs: 10 * MINUTE, max: 60 },
+      { windowMs: DAY, max: 500 },
     ],
   },
   login: {
@@ -138,8 +157,8 @@ const RULES: Record<string, Rule> = {
   resetPassword: {
     keyBy: 'ip',
     budgets: [
-      { windowMs: 10 * MINUTE, max: 20 },
-      { windowMs: HOUR, max: 60 },
+      { windowMs: 10 * MINUTE, max: 60 },
+      { windowMs: HOUR, max: 200 },
     ],
   },
   changePassword: {
@@ -150,6 +169,10 @@ const RULES: Record<string, Rule> = {
     ],
   },
   deleteAccount: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 5 }] },
+
+  pairBand: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 10 }] },
+  unpairBand: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 10 }] },
+  syncBand: { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 10 }] },
 };
 
 const DEFAULT_READ: Rule = { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 120 }] };

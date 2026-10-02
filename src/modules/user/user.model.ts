@@ -36,6 +36,8 @@ export interface IUser extends Document {
   sleepWeekendWakeTime: string | null;
 
   role: 'user' | 'admin';
+  //Set when the user deletes the account; the row is gone once its data is erased.
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -76,8 +78,11 @@ const userSchema = new Schema<IUser>(
     sleepWeekendWakeTime: { type: String, default: null, match: CLOCK_TIME },
 
     role: { type: String, enum: ['user', 'admin'], default: 'user' },
+    deletedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
+
+userSchema.index({ deletedAt: 1 }, { partialFilterExpression: { deletedAt: { $type: 'date' } } });
 
 export const User = model<IUser>('User', userSchema);

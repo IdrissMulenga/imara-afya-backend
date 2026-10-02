@@ -45,6 +45,12 @@ const en: Table = {
   [ErrorCode.INVALID_DEVICE_ID]: 'That device identifier is not valid.',
   'INVALID_DEVICE_ID.MISSING': 'This request is missing its device identifier.',
 
+  [ErrorCode.INVALID_BAND_ID]: 'That band identifier is not valid.',
+  [ErrorCode.BAND_NOT_PAIRED]: 'That band is not paired with your account.',
+  [ErrorCode.BAND_ALREADY_PAIRED]:
+    'Another band is already paired with your account. Remove it first.',
+  [ErrorCode.BAND_TAKEN]: 'That band is paired with another account.',
+
   [ErrorCode.BAD_USER_INPUT]: 'Some of that is not valid. Please check and try again.',
   'BAD_USER_INPUT.NOT_IMAGE': 'That file is not an image we can read.',
   'BAD_USER_INPUT.NO_IMAGE': 'No image was received.',
@@ -66,6 +72,8 @@ const en: Table = {
   'BAD_USER_INPUT.DAY_TOO_OLD': 'You can only log the last {maxDays} days.',
   [ErrorCode.NOT_FOUND]: 'We could not find that.',
   [ErrorCode.RATE_LIMITED]: 'Too many attempts. Please wait a moment and try again.',
+  'RATE_LIMITED.LOGIN_LOCKED':
+    'Too many incorrect passwords. Please try again in {minutes} min, or reset your password.',
   [ErrorCode.INTERNAL]: 'Something went wrong. Please try again.',
 };
 
@@ -107,6 +115,12 @@ const fr: Table = {
   [ErrorCode.INVALID_DEVICE_ID]: 'Cet identifiant d’appareil n’est pas valide.',
   'INVALID_DEVICE_ID.MISSING': 'L’identifiant de l’appareil manque dans cette requête.',
 
+  [ErrorCode.INVALID_BAND_ID]: 'Cet identifiant de bracelet n’est pas valide.',
+  [ErrorCode.BAND_NOT_PAIRED]: 'Ce bracelet n’est pas associé à votre compte.',
+  [ErrorCode.BAND_ALREADY_PAIRED]:
+    'Un autre bracelet est déjà associé à votre compte. Dissociez-le d’abord.',
+  [ErrorCode.BAND_TAKEN]: 'Ce bracelet est associé à un autre compte.',
+
   [ErrorCode.BAD_USER_INPUT]: 'Certaines informations ne sont pas valides. Vérifiez et réessayez.',
   'BAD_USER_INPUT.NOT_IMAGE': 'Ce fichier n’est pas une image lisible.',
   'BAD_USER_INPUT.NO_IMAGE': 'Aucune image n’a été reçue.',
@@ -128,6 +142,8 @@ const fr: Table = {
   'BAD_USER_INPUT.DAY_TOO_OLD': 'Vous ne pouvez enregistrer que les {maxDays} derniers jours.',
   [ErrorCode.NOT_FOUND]: 'Introuvable.',
   [ErrorCode.RATE_LIMITED]: 'Trop de tentatives. Patientez un instant puis réessayez.',
+  'RATE_LIMITED.LOGIN_LOCKED':
+    'Trop de mots de passe incorrects. Réessayez dans {minutes} min ou réinitialisez votre mot de passe.',
   [ErrorCode.INTERNAL]: 'Une erreur est survenue. Veuillez réessayer.',
 };
 
@@ -168,6 +184,12 @@ const sw: Table = {
   [ErrorCode.INVALID_DEVICE_ID]: 'Kitambulisho cha kifaa si sahihi.',
   'INVALID_DEVICE_ID.MISSING': 'Ombi hili halina kitambulisho cha kifaa.',
 
+  [ErrorCode.INVALID_BAND_ID]: 'Kitambulisho cha bangili si sahihi.',
+  [ErrorCode.BAND_NOT_PAIRED]: 'Bangili hiyo haijaunganishwa na akaunti yako.',
+  [ErrorCode.BAND_ALREADY_PAIRED]:
+    'Bangili nyingine tayari imeunganishwa na akaunti yako. Iondoe kwanza.',
+  [ErrorCode.BAND_TAKEN]: 'Bangili hiyo imeunganishwa na akaunti nyingine.',
+
   [ErrorCode.BAD_USER_INPUT]: 'Baadhi ya taarifa si sahihi. Angalia kisha ujaribu tena.',
   'BAD_USER_INPUT.NOT_IMAGE': 'Faili hilo si picha tunayoweza kusoma.',
   'BAD_USER_INPUT.NO_IMAGE': 'Hakuna picha iliyopokelewa.',
@@ -189,6 +211,8 @@ const sw: Table = {
   'BAD_USER_INPUT.DAY_TOO_OLD': 'Unaweza kuandika siku {maxDays} zilizopita tu.',
   [ErrorCode.NOT_FOUND]: 'Hatukuipata.',
   [ErrorCode.RATE_LIMITED]: 'Majaribio mengi mno. Subiri kidogo kisha ujaribu tena.',
+  'RATE_LIMITED.LOGIN_LOCKED':
+    'Umekosea nywila mara nyingi mno. Jaribu tena baada ya dakika {minutes}, au weka nywila mpya.',
   [ErrorCode.INTERNAL]: 'Kuna hitilafu. Tafadhali jaribu tena.',
 };
 
@@ -229,6 +253,11 @@ const rn: Table = {
   [ErrorCode.INVALID_DEVICE_ID]: 'Ico kiranga igikoresho si co.',
   'INVALID_DEVICE_ID.MISSING': 'Iki gisabisho ntikirimwo ikiranga igikoresho.',
 
+  [ErrorCode.INVALID_BAND_ID]: 'Ico kiranga igikomo si co.',
+  [ErrorCode.BAND_NOT_PAIRED]: 'Ico gikomo ntikihujwe na konte yawe.',
+  [ErrorCode.BAND_ALREADY_PAIRED]: 'Hari ikindi gikomo gihujwe na konte yawe. Banza ugikureko.',
+  [ErrorCode.BAND_TAKEN]: 'Ico gikomo gihujwe n’iyindi konte.',
+
   [ErrorCode.BAD_USER_INPUT]: 'Bimwe muri ivyo si vyo. Raba hanyuma ugerageze.',
   'BAD_USER_INPUT.NOT_IMAGE': 'Iyo dosiye si ifoto dushobora gusoma.',
   'BAD_USER_INPUT.NO_IMAGE': 'Nta foto yashitse.',
@@ -251,6 +280,8 @@ const rn: Table = {
   'BAD_USER_INPUT.DAY_TOO_OLD': 'Ushobora kwandika imisi {maxDays} iheze gusa.',
   [ErrorCode.NOT_FOUND]: 'Ntitwabironse.',
   [ErrorCode.RATE_LIMITED]: 'Wagerageje kenshi cane. Rindira gato hanyuma ugerageze.',
+  'RATE_LIMITED.LOGIN_LOCKED':
+    'Wanditse nabi ijambo ryibanga kenshi cane. Gerageza hashize iminota {minutes}, canke uhindure ijambo ryibanga.',
   [ErrorCode.INTERNAL]: 'Hari ikitagenze neza. Gerageza bushasha.',
 };
 
@@ -290,6 +321,18 @@ export const FIELDS = {
     fr: 'Nom de l’appareil',
     sw: 'Jina la kifaa',
     rn: 'Izina ry’igikoresho',
+  },
+  bandModel: {
+    en: 'Band model',
+    fr: 'Modèle du bracelet',
+    sw: 'Aina ya bangili',
+    rn: 'Ubwoko bw’igikomo',
+  },
+  firmware: {
+    en: 'Band software version',
+    fr: 'Version du logiciel du bracelet',
+    sw: 'Toleo la programu ya bangili',
+    rn: 'Verisiyo ya porogaramu y’igikomo',
   },
 } as const satisfies Record<string, Record<Locale, string>>;
 

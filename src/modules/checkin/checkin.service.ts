@@ -26,8 +26,38 @@ const HISTORY_DEFAULT_DAYS = 30;
 const HISTORY_MAX_DAYS = 90;
 
 const FIELDS = 'day at mood energy note createdAt';
+const DAY_MS = 24 * 60 * 60 * 1000;
+const dailyLocks = new Map<string, Promise<void>>();
 
 type Log = Pick<ICheckIn, '_id' | 'day' | 'at' | 'mood' | 'energy' | 'note' | 'createdAt'>;
+
+export const canCreateCheckIn = (currentCount: number, limit: number): boolean =>
+  currentCount < limit;
+
+export const isWithinDeleteWindow = (at: Date, now: Date, days: number): boolean =>
+  at.getTime() >= now.getTime() - days * DAY_MS;
+
+//Serializes quota checks and writes for a user/day on the single API instance.
+const withDailyLock = async <T>(key: string, action: () => Promise<T>): Promise<T> => {
+  const previous = dailyLocks.get(key) ?? Promise.resolve();
+  let release!: () => void;
+  const current = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  dailyLocks.set(key, current);
+
+  await previous;
+  try {
+    return await action();
+  } finally {
+    release();
+    if (dailyLocks.get(key) === current) dailyLocks.delete(key);
+  }
+};
+
+const deleteWindowFilter = (cutoff: Date) => ({
+  $or: [{ at: { $gte: cutoff } }, { at: { $exists: false }, createdAt: { $gte: cutoff } }],
+});
 
 const toEntry = (log: Log): CheckInEntry => ({
   id: String(log._id),
@@ -78,25 +108,34 @@ export const logCheckIn = async (user: IUser, input: LogCheckInInput): Promise<C
   const energy = inRange(input.energy, 1, 5, 'energy');
   const note = input.note != null ? cleanText(input.note, NOTE_MAX, 'note') : '';
 
-  const already = await CheckIn.countDocuments({ user: user._id, day });
-  if (already >= MAX_PER_DAY) {
-    throw appError(
-      ErrorCode.BAD_USER_INPUT,
-      `You have reached today's limit of ${MAX_PER_DAY} check-ins.`,
-      { reason: 'CHECK_IN_LIMIT', max: MAX_PER_DAY }
-    );
-  }
+  return withDailyLock(`${user._id}:${day}`, async () => {
+    const currentCount = await CheckIn.countDocuments({ user: user._id, day });
+    if (!canCreateCheckIn(currentCount, MAX_PER_DAY)) {
+      throw appError(
+        ErrorCode.BAD_USER_INPUT,
+        `You have reached today's limit of ${MAX_PER_DAY} check-ins.`,
+        { reason: 'CHECK_IN_LIMIT', max: MAX_PER_DAY }
+      );
+    }
 
-  const saved = await CheckIn.create({ user: user._id, day, at: now, mood, energy, note });
-  return toEntry(saved);
+    const saved = await CheckIn.create({ user: user._id, day, at: now, mood, energy, note });
+    return toEntry(saved);
+  });
 };
 
 //Removes one check-in from the last 30 days. Returns false if there was none.
 export const deleteCheckIn = async (user: IUser, id: string): Promise<boolean> => {
   if (!isValidObjectId(id)) return false;
-  const oldest = addDays(dayInZone(new Date(), user.timezone), -MAX_DELETE_AGE_DAYS);
-  const result = await CheckIn.deleteOne({ _id: id, user: user._id, day: { $gte: oldest } });
-  return result.deletedCount > 0;
+
+  const cutoff = new Date(Date.now() - MAX_DELETE_AGE_DAYS * DAY_MS);
+  const filter = { _id: id, user: user._id, ...deleteWindowFilter(cutoff) };
+  const checkIn = await CheckIn.findOne(filter).select({ day: 1 }).lean<{ day: string } | null>();
+  if (!checkIn) return false;
+
+  return withDailyLock(`${user._id}:${checkIn.day}`, async () => {
+    const removed = await CheckIn.findOneAndDelete(filter).select({ _id: 1 }).lean();
+    return removed !== null;
+  });
 };
 
 //Today's check-ins, the run of consecutive days checked in, and 7- and 30-day averages.

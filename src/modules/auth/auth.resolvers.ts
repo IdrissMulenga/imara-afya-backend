@@ -7,6 +7,7 @@ import type {
   SignUpInput,
   LoginInput,
   VerifyOtpInput,
+  VerifyEmailOtpInput,
   VerifyResetOtpInput,
   ResetPasswordInput,
   ChangePasswordInput,
@@ -17,7 +18,7 @@ import type {
 export const authResolvers = {
   Query: {
     myTrustedDevices: withUser((user, _a: unknown, context) =>
-      listDevices(user._id, context.req.get('x-device-id'))
+      listDevices(user._id, context.sessionDeviceId)
     ),
   },
 
@@ -38,7 +39,7 @@ export const authResolvers = {
       authService.resendLoginOtp(args.email, args.deviceId, context.ip)
     ),
 
-    verifyEmailOtp: withUser((user, args: { input: VerifyOtpInput }) =>
+    verifyEmailOtp: withUser((user, args: { input: VerifyEmailOtpInput }) =>
       authService.verifyEmailOtp(user, args.input.code)
     ),
 
@@ -64,12 +65,12 @@ export const authResolvers = {
       authService.resetPassword(args.input)
     ),
 
-    changePassword: withUser((user, args: { input: ChangePasswordInput }) =>
-      authService.changePassword(user, args.input)
+    changePassword: withUser((user, args: { input: ChangePasswordInput }, context) =>
+      authService.changePassword(user, args.input, context.sessionDeviceId)
     ),
 
     refreshSession: withUser((user, _a: unknown, context) =>
-      authService.refreshSession(user, context.sessionOrigin)
+      authService.refreshSession(user, context.sessionOrigin, context.sessionDeviceId)
     ),
 
     logout: withUser((user) => authService.logout(user)),

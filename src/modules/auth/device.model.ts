@@ -6,6 +6,7 @@ export interface IDevice extends Document {
   _id: Types.ObjectId;
   user: Types.ObjectId;
   deviceId: string;
+  secretHash: string;
   label: string;
   lastSeenAt: Date;
   expiresAt: Date;
@@ -15,6 +16,7 @@ const deviceSchema = new Schema<IDevice>(
   {
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     deviceId: { type: String, required: true },
+    secretHash: { type: String, required: true, select: false },
     label: { type: String, default: 'Unknown device', maxlength: 80 },
     lastSeenAt: { type: Date, default: Date.now },
     expiresAt: { type: Date, required: true },

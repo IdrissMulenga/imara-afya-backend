@@ -32,6 +32,10 @@ const cyclePeriodSchema = new Schema<ICyclePeriod>(
 );
 
 cyclePeriodSchema.index({ user: 1, start: -1 }, { unique: true });
+cyclePeriodSchema.index(
+  { user: 1 },
+  { unique: true, partialFilterExpression: { end: null }, name: 'one_open_period_per_user' }
+);
 
 export const CyclePeriod = model<ICyclePeriod>('CyclePeriod', cyclePeriodSchema);
 

@@ -6,7 +6,7 @@ import { maskEmail } from '../../shared/validation.js';
 
 //Sends one-time codes by email through Resend.
 const RESEND_URL = 'https://api.resend.com/emails';
-const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 30_000;
 
 type Language = 'en' | 'fr' | 'sw' | 'rn';
 type Locale = 'en' | 'fr' | 'sw';
@@ -157,6 +157,10 @@ export const sendOtpEmail = async (params: {
         : `[mail] sent ${params.purpose} code to ${maskEmail(params.to)}`
     );
   } catch (error) {
+    if (!env.IS_PRODUCTION) {
+      console.warn('[mail] delivery failed in development; use the code printed above:', error);
+      return;
+    }
     if (error instanceof GraphQLError) throw error;
 
     console.error('[mail] request failed:', error);

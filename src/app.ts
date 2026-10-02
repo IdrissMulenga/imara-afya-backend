@@ -11,8 +11,8 @@ import { schema } from './schema.js';
 import { getUserFromRequest } from './shared/middleware/auth.js';
 import { securityHeaders, securityPlugin } from './shared/middleware/security.js';
 import {
-  ipRateLimit,
-  ipRateLimitFor,
+  requestRateLimit,
+  uploadRateLimit,
   operationLimitPlugin,
 } from './shared/middleware/rateLimit.js';
 import { localizeErrors } from './shared/localize.js';
@@ -35,7 +35,7 @@ export const createApp = (): Express => {
     cors({
       origin: env.FRONTEND_URL ? env.FRONTEND_URL.split(',').map((o) => o.trim()) : true,
       credentials: true,
-      allowedHeaders: ['Content-Type', 'Authorization', 'x-device-id', 'accept-language'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'accept-language'],
     })
   );
 
@@ -53,7 +53,7 @@ export const createApp = (): Express => {
     })
   );
 
-  app.use('/upload', ipRateLimitFor('upload'), uploadRouter());
+  app.use('/upload', uploadRateLimit, uploadRouter());
 
   //Public privacy policy page, linked from the app stores (not rate limited).
   app.get('/privacy', (_req, res) => {
@@ -70,7 +70,7 @@ export const createApp = (): Express => {
     });
   });
 
-  app.use('/graphql', ipRateLimit);
+  app.use('/graphql', requestRateLimit);
 
   const yoga = createYoga<{ req: Request; res: Response }, Context>({
     schema,
@@ -81,14 +81,21 @@ export const createApp = (): Express => {
     plugins: [securityPlugin, operationLimitPlugin, localizeErrors],
 
     //Builds the per-request context: the caller, session origin and IP.
+    //A rejected token leaves the caller anonymous, so login and signup still work.
     context: async ({ req }): Promise<Context> => {
       const ip = req.ip ?? 'unknown';
 
       try {
         const caller = await getUserFromRequest(req);
-        return { user: caller.user, sessionOrigin: caller.sessionOrigin, ip, req };
+        return {
+          user: caller.user,
+          sessionOrigin: caller.sessionOrigin,
+          sessionDeviceId: caller.sessionDeviceId,
+          ip,
+          req,
+        };
       } catch (error) {
-        if (error instanceof GraphQLError) throw error;
+        if (error instanceof GraphQLError) return { authError: error, ip, req };
         console.error('[context] could not identify caller:', error);
         throw appError(ErrorCode.INTERNAL, 'Something went wrong. Please try again.');
       }

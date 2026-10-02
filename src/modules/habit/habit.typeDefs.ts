@@ -3,9 +3,10 @@ export const habitTypeDefs = /* GraphQL */ `
   type HabitDay {
     day: String!
     waterGlasses: Float!
-    steps: Int!
-    "Sleep that ended on this day."
-    sleepHours: Float!
+    "Steps synced from the paired band (syncBand); null means not yet synced."
+    steps: Int
+    "Sleep that ended on this day, synced from the paired band (syncBand); null means not yet synced."
+    sleepHours: Float
   }
 
   "Consecutive days, ending today (or yesterday), on which each goal was met."
@@ -20,12 +21,10 @@ export const habitTypeDefs = /* GraphQL */ `
     streaks: HabitStreaks!
   }
 
-  "Sets absolute values. Omitted fields are unchanged; day defaults to today (max 30 days back)."
+  "Sets only the manual water value for the day. Steps and sleep are device-managed and are not writable here."
   input LogHabitsInput {
     day: String
     waterGlasses: Float
-    steps: Int
-    sleepHours: Float
   }
 
   "Adds glasses of water (negative removes). day defaults to today."
@@ -36,7 +35,7 @@ export const habitTypeDefs = /* GraphQL */ `
 
   extend type Query {
     habitSummary: HabitSummary!
-    "The last N days (default 7, max 90), newest first, empty days as zeros."
+    "The last N days (default 7, max 90), newest first. Missing device values are returned as null, not zero."
     habitHistory(days: Int): [HabitDay!]!
   }
 

@@ -34,6 +34,7 @@ export const authTypeDefs = /* GraphQL */ `
     email: String!
     password: String!
     deviceId: String!
+    deviceSecret: String!
     deviceLabel: String
     "The language chosen in the app; also used for the signup email."
     language: Language
@@ -43,13 +44,19 @@ export const authTypeDefs = /* GraphQL */ `
     email: String!
     password: String!
     deviceId: String!
+    deviceSecret: String
     deviceLabel: String
   }
 
   input VerifyOtpInput {
     code: String!
-    deviceId: String
+    deviceId: String!
+    deviceSecret: String!
     deviceLabel: String
+  }
+
+  input VerifyEmailOtpInput {
+    code: String!
   }
 
   input VerifyResetOtpInput {
@@ -61,6 +68,7 @@ export const authTypeDefs = /* GraphQL */ `
     resetToken: String!
     password: String!
     deviceId: String!
+    deviceSecret: String!
     deviceLabel: String
   }
 
@@ -77,7 +85,7 @@ export const authTypeDefs = /* GraphQL */ `
     signup(input: SignUpInput!): AuthPayload!
     login(input: LoginInput!): LoginResult!
 
-    verifyEmailOtp(input: VerifyOtpInput!): User!
+    verifyEmailOtp(input: VerifyEmailOtpInput!): User!
     resendEmailOtp: Boolean!
 
     verifyLoginOtp(email: String!, input: VerifyOtpInput!): AuthPayload!

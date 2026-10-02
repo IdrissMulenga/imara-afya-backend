@@ -1,11 +1,18 @@
 import type { IUser } from '../user/index.js';
 import { HabitLog, type IHabitLog } from './habit.model.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
-import { inRange, resolveDay } from '../../shared/validation.js';
+import { checkDay, inRange, resolveDay } from '../../shared/validation.js';
 import { addDays, dayInZone, streakLength } from '../../shared/datetime.js';
 import { countOr, roundTo } from '../../shared/numbers.js';
 import { upsertWithRetry } from '../../shared/upsert.js';
-import type { AddWaterInput, HabitDay, HabitSummary, LogHabitsInput } from './habit.types.js';
+import type {
+  AddWaterInput,
+  DeviceDayInput,
+  DeviceSyncResult,
+  HabitDay,
+  HabitSummary,
+  LogHabitsInput,
+} from './habit.types.js';
 
 const MAX_WATER = 50;
 const MAX_STEPS = 200_000;
@@ -24,21 +31,30 @@ const toHabitDay = (
 ): HabitDay => ({
   day,
   waterGlasses: log?.waterGlasses ?? 0,
-  steps: log?.steps ?? 0,
-  sleepHours: log?.sleepHours ?? 0,
+  steps: log?.steps ?? null,
+  sleepHours: log?.sleepHours ?? null,
 });
 
 //Sets the given values for one day, creating the day if needed.
 export const logHabits = async (user: IUser, input: LogHabitsInput): Promise<HabitDay> => {
   const day = resolveDay(input.day, user.timezone, MAX_BACKDATE_DAYS);
 
-  const set: Partial<Record<'waterGlasses' | 'steps' | 'sleepHours', number>> = {};
+  if ('steps' in input && input.steps != null) {
+    throw appError(ErrorCode.BAD_USER_INPUT, 'Steps are synced from the connected device.', {
+      reason: 'DEVICE_MANAGED',
+      field: 'steps',
+    });
+  }
+  if ('sleepHours' in input && input.sleepHours != null) {
+    throw appError(ErrorCode.BAD_USER_INPUT, 'Sleep is synced from the connected device.', {
+      reason: 'DEVICE_MANAGED',
+      field: 'sleep',
+    });
+  }
+
+  const set: Partial<Record<'waterGlasses', number>> = {};
   if (input.waterGlasses != null) {
     set.waterGlasses = roundTo(inRange(input.waterGlasses, 0, MAX_WATER, 'water'), 2);
-  }
-  if (input.steps != null) set.steps = Math.round(inRange(input.steps, 0, MAX_STEPS, 'steps'));
-  if (input.sleepHours != null) {
-    set.sleepHours = roundTo(inRange(input.sleepHours, 0, MAX_SLEEP, 'sleep'), 2);
   }
 
   if (Object.keys(set).length === 0) {
@@ -46,7 +62,7 @@ export const logHabits = async (user: IUser, input: LogHabitsInput): Promise<Hab
     return toHabitDay(day, existing);
   }
 
-  const defaults = { waterGlasses: 0, steps: 0, sleepHours: 0 };
+  const defaults = { waterGlasses: 0 };
   const setOnInsert = Object.fromEntries(Object.entries(defaults).filter(([key]) => !(key in set)));
 
   const saved = await upsertWithRetry(() =>
@@ -58,6 +74,52 @@ export const logHabits = async (user: IUser, input: LogHabitsInput): Promise<Hab
   );
 
   return toHabitDay(day, saved);
+};
+
+//Writes the band's daily steps and sleep. Values are totals, so a retried sync changes nothing;
+//days in the future or more than MAX_BACKDATE_DAYS ago are skipped.
+export const syncDeviceDays = async (
+  user: IUser,
+  entries: DeviceDayInput[]
+): Promise<DeviceSyncResult> => {
+  const today = dayInZone(new Date(), user.timezone);
+  const oldest = addDays(today, -MAX_BACKDATE_DAYS);
+
+  const byDay = new Map<string, Partial<Record<'steps' | 'sleepHours', number>>>();
+  let skippedDays = 0;
+
+  for (const entry of entries) {
+    const day = checkDay(entry.day);
+    if (day > today || day < oldest) {
+      skippedDays += 1;
+      continue;
+    }
+
+    const set = byDay.get(day) ?? {};
+    if (entry.steps != null) {
+      set.steps = Math.round(inRange(entry.steps, 0, MAX_STEPS, 'steps'));
+    }
+    if (entry.sleepHours != null) {
+      set.sleepHours = roundTo(inRange(entry.sleepHours, 0, MAX_SLEEP, 'sleep'), 2);
+    }
+    byDay.set(day, set);
+  }
+
+  const writes = [...byDay]
+    .filter(([, set]) => Object.keys(set).length > 0)
+    .map(([day, set]) => ({
+      updateOne: {
+        filter: { user: user._id, day },
+        update: { $set: set, $setOnInsert: { waterGlasses: 0 } },
+        upsert: true,
+      },
+    }));
+
+  if (writes.length > 0) {
+    await upsertWithRetry(() => HabitLog.bulkWrite(writes, { ordered: false }));
+  }
+
+  return { syncedDays: writes.length, skippedDays };
 };
 
 //Adds glasses of water to one day (negative removes), kept within 0..MAX_WATER.
@@ -84,8 +146,6 @@ export const addWater = async (user: IUser, input: AddWaterInput): Promise<Habit
                 { $max: [0, { $add: [{ $ifNull: ['$waterGlasses', 0] }, delta] }] },
               ],
             },
-            steps: { $ifNull: ['$steps', 0] },
-            sleepHours: { $ifNull: ['$sleepHours', 0] },
             createdAt: { $ifNull: ['$createdAt', '$$NOW'] },
             updatedAt: '$$NOW',
           },
@@ -110,9 +170,14 @@ export const getSummary = async (user: IUser): Promise<HabitSummary> => {
     .limit(STREAK_WINDOW_DAYS + 1)
     .lean();
 
-  const metGoal = (met: (log: (typeof logs)[number]) => boolean) =>
+  const metGoal = (getValue: (log: (typeof logs)[number]) => number | null, goal: number) =>
     streakLength(
-      logs.filter(met).map((log) => log.day),
+      logs
+        .filter((log) => {
+          const value = getValue(log);
+          return value != null && Number.isFinite(value) && value >= goal;
+        })
+        .map((log) => log.day),
       today
     );
 
@@ -122,9 +187,9 @@ export const getSummary = async (user: IUser): Promise<HabitSummary> => {
       logs.find((log) => log.day === today)
     ),
     streaks: {
-      water: metGoal((log) => log.waterGlasses >= user.waterGoalGlasses),
-      steps: metGoal((log) => log.steps >= user.stepGoal),
-      sleep: metGoal((log) => log.sleepHours >= user.sleepGoalHours),
+      water: metGoal((log) => log.waterGlasses, user.waterGoalGlasses),
+      steps: metGoal((log) => log.steps, user.stepGoal),
+      sleep: metGoal((log) => log.sleepHours, user.sleepGoalHours),
     },
   };
 };

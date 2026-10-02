@@ -8,5 +8,8 @@ export const requireUser = (user: IUser | undefined): IUser => {
   return user;
 };
 
-//Returns the signed-in user or throws UNAUTHENTICATED.
-export const requireAuth = (context: Context): IUser => requireUser(context.user);
+//Returns the signed-in user, or throws why the token was rejected, or UNAUTHENTICATED.
+export const requireAuth = (context: Context): IUser => {
+  if (!context.user && context.authError) throw context.authError;
+  return requireUser(context.user);
+};

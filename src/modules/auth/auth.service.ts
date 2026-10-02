@@ -8,6 +8,7 @@ import {
   tryNormalizeEmail,
   checkPassword,
   checkDeviceId,
+  checkDeviceSecret,
   maskEmail,
 } from '../../shared/validation.js';
 import { signToken, signResetToken, verifyResetToken, isSessionTooOld } from './token.service.js';
@@ -16,6 +17,7 @@ import { isDeviceTrusted, trustDevice, touchDevice, revokeAllDevices } from './d
 import { Device } from './device.model.js';
 import { Otp } from './otp.model.js';
 import { minutesFromNow } from '../../shared/datetime.js';
+import { createFailureCounter } from '../../shared/failures.js';
 import type {
   SignUpInput,
   LoginInput,
@@ -28,12 +30,30 @@ import type {
 
 const DUMMY_HASH = bcrypt.hashSync('imara-afya-timing-equaliser', 12);
 
+//Wrong passwords allowed per email, from any IP, before login is locked for the window.
+const LOGIN_FAILURES_MAX = 10;
+const LOGIN_LOCK_MINUTES = 15;
+const loginFailures = createFailureCounter(LOGIN_LOCK_MINUTES * 60_000, LOGIN_FAILURES_MAX);
+
 const invalidCredentials = () =>
   appError(ErrorCode.INVALID_CREDENTIALS, 'That email or password is not right.');
 
-//Signs a session token. origin is the time of the original sign-in.
-const makeSession = (user: IUser, origin = new Date()): AuthPayload => ({
-  token: signToken(String(user._id), user.tokenVersion, origin),
+const loginLocked = (retryAfterSeconds: number) => {
+  const minutes = Math.ceil(retryAfterSeconds / 60);
+  return appError(
+    ErrorCode.RATE_LIMITED,
+    `Too many incorrect passwords. Please try again in ${minutes} minutes, or reset your password.`,
+    { reason: 'LOGIN_LOCKED', retryAfterSeconds, minutes }
+  );
+};
+
+//Signs a session token for the device signed in with. origin is the time of the original sign-in.
+const makeSession = (
+  user: IUser,
+  deviceId: string | undefined,
+  origin = new Date()
+): AuthPayload => ({
+  token: signToken(String(user._id), user.tokenVersion, deviceId, origin),
   user,
 });
 
@@ -42,6 +62,7 @@ export const signup = async (input: SignUpInput & { ip: string }): Promise<AuthP
   const email = normalizeEmail(input.email);
   checkPassword(input.password);
   const deviceId = checkDeviceId(input.deviceId);
+  const deviceSecret = checkDeviceSecret(input.deviceSecret);
 
   if (await User.exists({ email })) {
     throw appError(ErrorCode.EMAIL_TAKEN, 'That email address is already registered.');
@@ -55,9 +76,9 @@ export const signup = async (input: SignUpInput & { ip: string }): Promise<AuthP
 
   //If a later step fails, the account is removed again so the same email can sign up.
   try {
-    await trustDevice({ userId: user._id, deviceId, label: input.deviceLabel });
+    await trustDevice({ userId: user._id, deviceId, deviceSecret, label: input.deviceLabel });
     await sendCodeBestEffort({ user, purpose: 'SIGNUP', ip: input.ip, skipCooldown: true });
-    return makeSession(user);
+    return makeSession(user, deviceId);
   } catch (error) {
     await Promise.all([
       User.deleteOne({ _id: user._id }),
@@ -72,19 +93,34 @@ export const signup = async (input: SignUpInput & { ip: string }): Promise<AuthP
 export const login = async (input: LoginInput & { ip: string }): Promise<LoginResult> => {
   const email = normalizeEmail(input.email);
   const deviceId = checkDeviceId(input.deviceId);
+  const deviceSecret = input.deviceSecret ? checkDeviceSecret(input.deviceSecret) : undefined;
 
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email, deletedAt: null });
+
+  //Once an email is locked, only its owner's trusted phone gets through, so an attacker
+  //cannot lock the owner out. Unknown emails lock the same way, revealing nothing.
+  const lockedFor = loginFailures.blockedFor(email);
+  if (lockedFor > 0) {
+    const trusted =
+      !!user && !!deviceSecret && (await isDeviceTrusted(user._id, deviceId, deviceSecret));
+    if (!trusted) throw loginLocked(lockedFor);
+  }
 
   //Compares against a dummy hash so an unknown email takes as long as a known one.
   if (!user) {
     await bcrypt.compare(input.password, DUMMY_HASH);
+    loginFailures.record(email);
     throw invalidCredentials();
   }
-  if (!(await passwordMatches(user, input.password))) throw invalidCredentials();
+  if (!(await passwordMatches(user, input.password))) {
+    loginFailures.record(email);
+    throw invalidCredentials();
+  }
+  loginFailures.clear(email);
 
-  if (await isDeviceTrusted(user._id, deviceId)) {
+  if (deviceSecret && (await isDeviceTrusted(user._id, deviceId, deviceSecret))) {
     await touchDevice(user._id, deviceId);
-    return makeSession(user);
+    return makeSession(user, deviceId);
   }
 
   //Unverified addresses cannot receive login codes.
@@ -104,14 +140,16 @@ export const login = async (input: LoginInput & { ip: string }): Promise<LoginRe
 export const verifyLoginOtp = async (input: {
   email: string;
   code: string;
-  deviceId?: string;
+  deviceId: string;
+  deviceSecret: string;
   deviceLabel?: string;
 }): Promise<AuthPayload> => {
   const email = normalizeEmail(input.email);
   const deviceId = checkDeviceId(input.deviceId);
+  const deviceSecret = checkDeviceSecret(input.deviceSecret);
 
   //An unknown email gets the same error as a wrong code.
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email, deletedAt: null });
   if (!user) throw codeNotValid();
 
   const { deviceId: issuedFor } = await verifyCode({
@@ -129,9 +167,9 @@ export const verifyLoginOtp = async (input: {
     );
   }
 
-  await trustDevice({ userId: user._id, deviceId, label: input.deviceLabel });
+  await trustDevice({ userId: user._id, deviceId, deviceSecret, label: input.deviceLabel });
 
-  return makeSession(user);
+  return makeSession(user, deviceId);
 };
 
 //Marks the email verified once its signup code is right.
@@ -162,7 +200,7 @@ export const resendLoginOtp = async (
   const normalized = normalizeEmail(email);
   const device = checkDeviceId(deviceId);
 
-  const user = await User.findOne({ email: normalized });
+  const user = await User.findOne({ email: normalized, deletedAt: null });
   if (!user || !user.emailVerified) return true;
 
   await sendCode({ user, purpose: 'LOGIN', ip, deviceId: device });
@@ -174,7 +212,7 @@ export const requestPasswordReset = async (email: string, ip: string): Promise<b
   const normalized = tryNormalizeEmail(email);
   if (!normalized) return true;
 
-  const user = await User.findOne({ email: normalized });
+  const user = await User.findOne({ email: normalized, deletedAt: null });
   if (!user || !user.emailVerified) return true;
 
   try {
@@ -188,7 +226,7 @@ export const requestPasswordReset = async (email: string, ip: string): Promise<b
 
 //Swaps a correct reset code for a short-lived reset token.
 export const verifyPasswordResetOtp = async (email: string, code: string): Promise<ResetTicket> => {
-  const user = await User.findOne({ email: normalizeEmail(email) });
+  const user = await User.findOne({ email: normalizeEmail(email), deletedAt: null });
   if (!user) throw codeNotValid();
 
   await verifyCode({ userId: user._id, purpose: 'RESET', code });
@@ -203,6 +241,7 @@ export const verifyPasswordResetOtp = async (email: string, code: string): Promi
 export const resetPassword = async (input: ResetPasswordInput): Promise<AuthPayload> => {
   checkPassword(input.password);
   const deviceId = checkDeviceId(input.deviceId);
+  const deviceSecret = checkDeviceSecret(input.deviceSecret);
 
   const ticket = verifyResetToken(input.resetToken);
   const user = await getUser(ticket.userId);
@@ -227,15 +266,16 @@ export const resetPassword = async (input: ResetPasswordInput): Promise<AuthPayl
 
   //Revokes all trusted devices, then trusts this one.
   await revokeAllDevices(user._id);
-  await trustDevice({ userId: user._id, deviceId, label: input.deviceLabel });
+  await trustDevice({ userId: user._id, deviceId, deviceSecret, label: input.deviceLabel });
 
-  return makeSession(user);
+  return makeSession(user, deviceId);
 };
 
 //Changes the password after checking the current one; locks after too many wrong tries.
 export const changePassword = async (
   user: IUser,
-  input: ChangePasswordInput
+  input: ChangePasswordInput,
+  deviceId: string | undefined
 ): Promise<AuthPayload> => {
   checkPassword(input.newPassword);
 
@@ -259,15 +299,19 @@ export const changePassword = async (
   }
 
   await setPassword(user, input.newPassword);
-  return makeSession(user);
+  return makeSession(user, deviceId);
 };
 
-//A new token with the same sign-in time, until that sign-in is MAX_SESSION_DAYS old.
-export const refreshSession = (user: IUser, origin: string | undefined): AuthPayload => {
+//A new token with the same sign-in time and device, until that sign-in is MAX_SESSION_DAYS old.
+export const refreshSession = (
+  user: IUser,
+  origin: string | undefined,
+  deviceId: string | undefined
+): AuthPayload => {
   if (!origin || isSessionTooOld(origin)) {
     throw appError(ErrorCode.SESSION_EXPIRED, 'Please sign in again to continue.');
   }
-  return makeSession(user, new Date(origin));
+  return makeSession(user, deviceId, new Date(origin));
 };
 
 //Bumping tokenVersion signs out every device, not just this one.

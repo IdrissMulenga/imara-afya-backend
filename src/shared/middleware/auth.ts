@@ -6,6 +6,7 @@ import { appError, ErrorCode } from '../errors.js';
 export interface CallerIdentity {
   user?: IUser;
   sessionOrigin?: string;
+  sessionDeviceId?: string;
 }
 
 //Resolves the bearer token to a user; no token means no user, a bad or revoked one throws.
@@ -19,7 +20,7 @@ export const getUserFromRequest = async (req: Request): Promise<CallerIdentity> 
   const claims = verifyToken(token);
   const user = await User.findById(claims.userId);
 
-  if (!user) {
+  if (!user || user.deletedAt) {
     throw appError(ErrorCode.UNAUTHENTICATED, 'That account no longer exists.', {
       reason: 'ACCOUNT_GONE',
     });
@@ -30,5 +31,5 @@ export const getUserFromRequest = async (req: Request): Promise<CallerIdentity> 
     throw appError(ErrorCode.TOKEN_REVOKED, 'You have been signed out. Please sign in again.');
   }
 
-  return { user, sessionOrigin: claims.origin };
+  return { user, sessionOrigin: claims.origin, sessionDeviceId: claims.deviceId };
 };

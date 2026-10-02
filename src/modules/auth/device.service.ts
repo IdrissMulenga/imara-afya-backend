@@ -1,8 +1,9 @@
+import crypto from 'node:crypto';
 import { isValidObjectId, type Types } from 'mongoose';
 import { Device } from './device.model.js';
 import { env } from '../../config/env.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
-import { cleanText } from '../../shared/validation.js';
+import { checkDeviceSecret, cleanText } from '../../shared/validation.js';
 import { daysFromNow } from '../../shared/datetime.js';
 import { upsertWithRetry } from '../../shared/upsert.js';
 
@@ -22,31 +23,68 @@ const evictBeyondCap = async (userId: Types.ObjectId): Promise<void> => {
   await Device.deleteMany({ _id: { $in: surplus.map((device) => device._id) } });
 };
 
-//True when the device is trusted and its trust has not expired.
-export const isDeviceTrusted = async (
-  userId: Types.ObjectId,
-  deviceId: string
-): Promise<boolean> => {
-  const device = await Device.findOne({ user: userId, deviceId }).lean();
-  return device !== null && device.expiresAt.getTime() > Date.now();
+export const createDeviceSecret = (): string => crypto.randomBytes(32).toString('hex');
+
+//SHA-256 of a device secret, as hex. The secret is random, so a slow hash adds nothing.
+export const hashDeviceSecret = (secret: string): string =>
+  crypto.createHash('sha256').update(secret).digest('hex');
+
+//True when the secret matches the stored hash; compared in constant time.
+export const verifyDeviceSecret = (
+  secret: string | undefined,
+  hash: string | undefined
+): boolean => {
+  if (!secret || !hash) return false;
+  const expected = Buffer.from(hash, 'hex');
+  const actual = Buffer.from(hashDeviceSecret(secret), 'hex');
+  return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 };
 
-//Trusts a device for DEVICE_TRUST_DAYS (insert or refresh).
+//True when the device proves possession of its secret and its trust has not expired.
+//A device trusted before secrets existed has none, so it gets a code once and is re-trusted.
+export const isDeviceTrusted = async (
+  userId: Types.ObjectId,
+  deviceId: string,
+  deviceSecret?: string
+): Promise<boolean> => {
+  const device = await Device.findOne({ user: userId, deviceId })
+    .select({ expiresAt: 1, secretHash: 1 })
+    .lean();
+
+  if (!device || !device.secretHash || !deviceSecret) return false;
+  if (device.expiresAt.getTime() <= Date.now()) return false;
+
+  return verifyDeviceSecret(deviceSecret, device.secretHash);
+};
+
+//Trusts a device for DEVICE_TRUST_DAYS (insert or refresh) and stores a secret hash.
 export const trustDevice = async (params: {
   userId: Types.ObjectId;
   deviceId: string;
+  deviceSecret: string;
   label?: string;
 }): Promise<void> => {
+  const deviceSecret = checkDeviceSecret(params.deviceSecret);
   const label = params.label
     ? cleanText(params.label, 80, 'deviceName') || 'Unknown device'
     : 'Unknown device';
+
+  const secretHash = hashDeviceSecret(deviceSecret);
 
   await upsertWithRetry(() =>
     Device.updateOne(
       { user: params.userId, deviceId: params.deviceId },
       {
-        $set: { lastSeenAt: new Date(), expiresAt: daysFromNow(env.DEVICE_TRUST_DAYS), label },
-        $setOnInsert: { user: params.userId, deviceId: params.deviceId },
+        $set: {
+          lastSeenAt: new Date(),
+          expiresAt: daysFromNow(env.DEVICE_TRUST_DAYS),
+          label,
+          secretHash,
+        },
+        $setOnInsert: {
+          user: params.userId,
+          deviceId: params.deviceId,
+        },
       },
       { upsert: true }
     )

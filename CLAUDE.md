@@ -57,7 +57,7 @@ src/
     http.ts             sendError() for the plain express routes
     middleware/
       auth.ts           turns a bearer token into context.user
-      rateLimit.ts      per-IP middleware + per-operation yoga plugin
+      rateLimit.ts      per-user/per-IP middleware + per-operation yoga plugin
       security.ts       security headers + query depth limit
 
   modules/
@@ -65,7 +65,8 @@ src/
     user/
       user.model.ts     the mongoose schema
       user.types.ts     the input shapes this module accepts
-      user.service.ts   profile, preferences, delete account
+      user.service.ts   profile, preferences, delete account (closed at once; an interrupted
+                        erase is finished by purgeDeletedUsers at startup and hourly)
       user.typeDefs.ts  the User type and its queries/mutations
       user.resolvers.ts
       index.ts          exports typeDefs, resolvers, and the User model
@@ -83,12 +84,15 @@ src/
       index.ts
     habit/              daily water, steps and sleep; streaks against the profile goals
       habit.model.ts    one HabitLog per user per day (day = YYYY-MM-DD in user's tz)
-      habit.service.ts  logHabits, addWater, summary, history
+      habit.service.ts  logHabits, addWater, syncDeviceDays (band steps/sleep), summary, history
       ...
     checkin/            mood and energy (1-5) with a note, up to 10 a day; streak and 7/30-day averages
       checkin.model.ts  one CheckIn per check-in (several per user per day)
     cycle/              periods (start/end), averages, cycle day, phase and next-period estimates
       cycle.model.ts    one CyclePeriod per period; end is null while ongoing
+    band/               the paired fitness band: pair, unpair, sync daily steps and sleep
+      band.model.ts     one Band per user, and a bandId belongs to one user (both unique)
+      band.service.ts   pairBand, unpairBand, syncBand (writes through habit's syncDeviceDays)
     upload/             profile photos over plain REST (multipart), not GraphQL
       avatar.service.ts re-encode to a 512px JPEG, save under UPLOAD_DIR, delete old
       avatar.routes.ts  POST /upload/avatar, DELETE /upload/avatar
@@ -113,8 +117,9 @@ anything else a module exports (a union `__resolveType`, field resolvers like
 Modules and `shared/` may import a module only through its folder's `index.ts`,
 never by reaching inside it. Today: `auth` imports `User` and `getUser` from
 `modules/user`, and
-`user` imports `Otp` and `Device` from `modules/auth` and `clearAvatar` from
-`modules/upload` so account deletion can erase them.
+`user` imports `Otp` and `Device` from `modules/auth`, `Band` from `modules/band`
+and `clearAvatar` from `modules/upload` so account deletion can erase them, and
+`band` imports `syncDeviceDays` from `modules/habit`.
 
 ### Adding a feature
 
@@ -165,19 +170,23 @@ the database after they ask for their account to be deleted.
 ## The request pipeline (`src/app.ts`)
 
 security headers → CORS → 1mb body cap → `/uploads/avatars` (static files) →
-`/upload` (own per-IP budget) → `/health` → per-IP rate limit → graphql-yoga (depth limit + 10 top-level fields per query + introspection control → per-operation rate limit →
+`/upload` (own budget) → `/health` → per-user/per-IP rate limit → graphql-yoga (depth limit + 10 top-level fields per query + introspection control → per-operation rate limit →
 context → resolvers)
 
 Order matters:
 
 - `/health` sits ABOVE the rate limiter, so an uptime monitor polling every ten
   seconds cannot exhaust the IP budget and report an outage it caused itself.
-- Both rate limiters key on `req.ip`, which express resolves via `trust proxy`.
+- The request limiters (`requestRateLimit`, `uploadRateLimit`) key on the user when the
+  bearer token verifies, otherwise on `req.ip`: mobile carriers put many people behind
+  one IP, so signed-in traffic must not share a budget. `req.ip` comes from `trust proxy`.
   **Never** read `x-forwarded-for` directly — the caller writes that header, so a
   fresh value per request means a fresh budget.
+- `login` also locks an email for 15 minutes after 10 wrong passwords from any IP
+  (`shared/failures.ts`); the owner's trusted phone still gets through.
 - Check the `RULES` table in `shared/middleware/rateLimit.ts` before assuming a new
   mutation is unlimited. Unlisted fields fall through to a default budget.
-- `/upload` is REST, not GraphQL, so it has its own per-IP budget (`upload`) and
+- `/upload` is REST, not GraphQL, so it has its own budget (20 per 10 minutes) and
   reports errors in the GraphQL `{ errors: [{ message, extensions }] }` shape.
 - Avatars are files on local disk under `UPLOAD_DIR` (git-ignored). In production
   that directory must be a persistent volume, or every deploy loses every photo.

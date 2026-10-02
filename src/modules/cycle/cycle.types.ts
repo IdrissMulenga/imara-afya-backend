@@ -19,7 +19,13 @@ export type Flow = (typeof FLOWS)[number];
 export type Symptom = (typeof SYMPTOMS)[number];
 export type Discharge = (typeof DISCHARGES)[number];
 export type CyclePhase = 'MENSTRUAL' | 'FOLLICULAR' | 'FERTILE' | 'LUTEAL' | 'UNKNOWN';
-export type CycleNote = 'IRREGULAR' | 'SHORT_CYCLES' | 'LONG_CYCLES' | 'LONG_PERIODS' | 'VERY_LATE';
+export type CycleNote =
+  | 'IRREGULAR'
+  | 'SHORT_CYCLES'
+  | 'LONG_CYCLES'
+  | 'LONG_PERIODS'
+  | 'PROLONGED_BLEEDING'
+  | 'VERY_LATE';
 
 //Sets one day's log. An empty log (no flow, symptoms, discharge or note) removes it.
 export interface CycleDayInput {
@@ -80,6 +86,8 @@ export interface CycleSummary {
   cyclesUsed: number;
   cycleDay: number | null;
   phase: CyclePhase;
+  //True when nothing recent was logged; predictions are then withheld, VERY_LATE is kept.
+  estimatesStale: boolean;
   nextPeriodStart: string | null;
   nextPeriodInDays: number | null;
   ovulationDay: string | null;

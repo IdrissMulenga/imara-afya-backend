@@ -7,7 +7,8 @@ const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CONTROL_CHARS = new RegExp('[\\x00-\\x1F\\x7F]', 'g');
 
 export const PASSWORD_MIN = 8;
-export const PASSWORD_MAX = 128;
+//bcrypt ignores everything after 72 bytes, so longer passwords are refused.
+export const PASSWORD_MAX_BYTES = 72;
 
 //Throws OUT_OF_RANGE unless value is a finite number within [min, max].
 export const inRange = (value: number, min: number, max: number, field: Field): number => {
@@ -38,7 +39,7 @@ export const tryNormalizeEmail = (raw: string): string | null => {
   }
 };
 
-//Throws WEAK_PASSWORD unless the password is 8-128 characters and not only spaces.
+//Throws WEAK_PASSWORD unless the password is 8+ characters, at most 72 bytes, and not only spaces.
 export const checkPassword = (password: string): void => {
   if (password.length < PASSWORD_MIN) {
     throw appError(
@@ -47,7 +48,7 @@ export const checkPassword = (password: string): void => {
       { min: PASSWORD_MIN }
     );
   }
-  if (password.length > PASSWORD_MAX) {
+  if (Buffer.byteLength(password, 'utf8') > PASSWORD_MAX_BYTES) {
     throw appError(ErrorCode.WEAK_PASSWORD, 'That password is too long.', { reason: 'TOO_LONG' });
   }
   if (/^\s+$/.test(password)) {
@@ -76,6 +77,31 @@ export const checkDeviceId = (deviceId: string | null | undefined): string => {
   const trimmed = deviceId.trim();
   if (trimmed.length < 8 || trimmed.length > 128 || !/^[\w-]+$/.test(trimmed)) {
     throw appError(ErrorCode.INVALID_DEVICE_ID, 'That device identifier is not valid.');
+  }
+  return trimmed;
+};
+
+//Checks a device secret; a missing or weak one is INVALID_DEVICE_SECRET.
+export const checkDeviceSecret = (deviceSecret: string | null | undefined): string => {
+  if (!deviceSecret) {
+    throw appError(ErrorCode.INVALID_DEVICE_SECRET, 'This request is missing its device secret.', {
+      reason: 'MISSING',
+    });
+  }
+  const trimmed = deviceSecret.trim();
+  if (trimmed.length < 16 || trimmed.length > 256) {
+    throw appError(ErrorCode.INVALID_DEVICE_SECRET, 'That device secret is not valid.');
+  }
+  return trimmed;
+};
+
+//Checks a band's hardware identifier (serial number or MAC address) and uppercases it.
+export const checkBandId = (bandId: string | null | undefined): string => {
+  const trimmed = String(bandId ?? '')
+    .trim()
+    .toUpperCase();
+  if (trimmed.length < 4 || trimmed.length > 64 || !/^[\w:.-]+$/.test(trimmed)) {
+    throw appError(ErrorCode.INVALID_BAND_ID, 'That band identifier is not valid.');
   }
   return trimmed;
 };

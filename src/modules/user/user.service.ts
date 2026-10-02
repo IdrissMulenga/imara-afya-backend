@@ -9,12 +9,14 @@ import { cleanText, checkClockTime, checkTimezone, inRange } from '../../shared/
 import { HabitLog } from '../habit/index.js';
 import { CheckIn } from '../checkin/index.js';
 import { CycleDay, CyclePeriod } from '../cycle/index.js';
+import { Band } from '../band/index.js';
 import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
 
 //Loads a user or throws ACCOUNT_NOT_FOUND.
 export const getUser = async (id: string): Promise<IUser> => {
   const user = await User.findById(id);
-  if (!user) throw appError(ErrorCode.ACCOUNT_NOT_FOUND, 'That account no longer exists.');
+  if (!user || user.deletedAt)
+    throw appError(ErrorCode.ACCOUNT_NOT_FOUND, 'That account no longer exists.');
   return user;
 };
 
@@ -82,27 +84,59 @@ export const setPreferences = async (user: IUser, input: PreferencesInput): Prom
 };
 
 //Collections deleted along with the account.
-const USER_OWNED = [Otp, Device, HabitLog, CheckIn, CyclePeriod, CycleDay] as unknown as Model<{
+const USER_OWNED = [
+  Otp,
+  Device,
+  HabitLog,
+  CheckIn,
+  CyclePeriod,
+  CycleDay,
+  Band,
+] as unknown as Model<{
   user: unknown;
 }>[];
 
-//Deletes the account and all its data after checking the password.
+//Accounts purgeDeletedUsers finishes per run.
+const PURGE_BATCH = 50;
+
+//Erases a user marked deleted: the avatar file, every owned collection, then the user row.
+//Safe to repeat, so an interrupted erase can simply be run again.
+const purgeUser = async (user: IUser): Promise<void> => {
+  await clearAvatar(user);
+  await Promise.all(USER_OWNED.map((Model) => Model.deleteMany({ user: user._id })));
+  await User.deleteOne({ _id: user._id });
+};
+
+//Closes the account at once (signed out everywhere, unusable), then erases all its data.
+//If erasing fails part-way, purgeDeletedUsers finishes it.
 export const deleteAccount = async (user: IUser, password: string): Promise<boolean> => {
   if (!(await passwordMatches(user, password))) {
     throw appError(ErrorCode.WRONG_PASSWORD, 'That password is not right.');
   }
 
-  //Deletes the avatar file from disk.
-  await clearAvatar(user).catch((error) => {
-    console.warn('[user] could not remove avatar on delete:', error);
+  user.deletedAt = new Date();
+  user.tokenVersion += 1;
+  await user.save();
+
+  await purgeUser(user).catch((error) => {
+    console.error('[user] account closed; erase will be retried:', error);
   });
-
-  for (const Model of USER_OWNED) {
-    await Model.deleteMany({ user: user._id });
-  }
-
-  await User.deleteOne({ _id: user._id });
   return true;
+};
+
+//Finishes erasing accounts whose deletion was interrupted. Returns how many were erased.
+export const purgeDeletedUsers = async (): Promise<number> => {
+  const users = await User.find({ deletedAt: { $ne: null } }).limit(PURGE_BATCH);
+  let erased = 0;
+  for (const user of users) {
+    try {
+      await purgeUser(user);
+      erased += 1;
+    } catch (error) {
+      console.error('[user] could not finish erasing an account:', error);
+    }
+  }
+  return erased;
 };
 
 //BMI from height and weight, or null if either is missing.

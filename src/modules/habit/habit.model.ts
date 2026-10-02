@@ -7,9 +7,9 @@ export interface IHabitLog extends Document {
   //YYYY-MM-DD in the user's timezone.
   day: string;
   waterGlasses: number;
-  steps: number;
+  steps: number | null;
   //Sleep that ended on this day (last night's sleep is logged on the morning's day).
-  sleepHours: number;
+  sleepHours: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -19,8 +19,8 @@ const habitLogSchema = new Schema<IHabitLog>(
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     day: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
     waterGlasses: { type: Number, default: 0, min: 0 },
-    steps: { type: Number, default: 0, min: 0 },
-    sleepHours: { type: Number, default: 0, min: 0 },
+    steps: { type: Number, default: null, min: 0, nullable: true },
+    sleepHours: { type: Number, default: null, min: 0, nullable: true },
   },
   { timestamps: true }
 );
