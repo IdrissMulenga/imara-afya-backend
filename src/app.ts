@@ -55,9 +55,13 @@ export const createApp = (): Express => {
 
   app.use('/upload', uploadRateLimit, uploadRouter());
 
-  //Public privacy policy page, linked from the app stores (not rate limited).
+  //Public privacy policy and terms of use pages, linked from the app and the stores (not rate limited).
   app.get('/privacy', (_req, res) => {
     res.sendFile(path.resolve(process.cwd(), 'public', 'privacy.html'));
+  });
+
+  app.get('/terms', (_req, res) => {
+    res.sendFile(path.resolve(process.cwd(), 'public', 'terms.html'));
   });
 
   //Health check for uptime monitors (not rate limited).
