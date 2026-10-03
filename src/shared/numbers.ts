@@ -23,3 +23,10 @@ export const countOr = (value: number | null | undefined, fallback: number, max:
   value == null || !Number.isFinite(value)
     ? fallback
     : Math.min(max, Math.max(1, Math.floor(value)));
+
+//BMI from height and weight, or null if either is missing.
+export const calculateBMI = (heightCm: number | null, weightKg: number | null): number | null => {
+  if (!heightCm || !weightKg) return null;
+  const metres = heightCm / 100;
+  return roundTo(weightKg / (metres * metres), 1);
+};

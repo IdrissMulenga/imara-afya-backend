@@ -53,7 +53,7 @@ src/
     errors.ts           ErrorCode list, appError(), handleError()
     validation.ts       normalizeEmail, checkPassword, checkDay, resolveDay, ...
     datetime.ts         dayInZone, addDays, daysBetween, streakLength, ...
-    numbers.ts          roundTo, mean, median, countOr
+    numbers.ts          roundTo, mean, median, countOr, calculateBMI
     password.ts         hashPassword, passwordMatches, setPassword
     http.ts             sendError() for the plain express routes
     middleware/
@@ -98,6 +98,9 @@ src/
       avatar.service.ts re-encode to a 512px JPEG, save under UPLOAD_DIR, delete old
       avatar.routes.ts  POST /upload/avatar, DELETE /upload/avatar
       index.ts          exports the router, avatarDir, saveAvatar, clearAvatar
+    weight/             weight history: one entry per day; the newest day is the profile weightKg
+      weight.model.ts   one WeightLog per user per day
+      weight.service.ts logWeight, deleteWeight, history, recordProfileWeight (from updateProfile)
 
   schema.ts             builds the executable schema from modules/index.ts
   app.ts                the express pipeline
@@ -118,8 +121,9 @@ anything else a module exports (a union `__resolveType`, field resolvers like
 Modules and `shared/` may import a module only through its folder's `index.ts`,
 never by reaching inside it. Today: `auth` imports `User` and `getUser` from
 `modules/user`, and
-`user` imports `Otp` and `Device` from `modules/auth`, `Band` from `modules/band`
-and `clearAvatar` from `modules/upload` so account deletion can erase them, and
+`user` imports `Otp` and `Device` from `modules/auth`, `Band` from `modules/band`,
+`clearAvatar` from `modules/upload` and `WeightLog` and `recordProfileWeight` from
+`modules/weight` so account deletion can erase them and a profile weight is logged, and
 `band` imports `syncDeviceDays` from `modules/habit`.
 
 ### Adding a feature

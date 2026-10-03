@@ -4,12 +4,12 @@ import { Otp, Device } from '../auth/index.js';
 import { clearAvatar } from '../upload/index.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { passwordMatches } from '../../shared/password.js';
-import { roundTo } from '../../shared/numbers.js';
 import { cleanText, checkClockTime, checkTimezone, inRange } from '../../shared/validation.js';
 import { HabitLog } from '../habit/index.js';
 import { CheckIn } from '../checkin/index.js';
 import { CycleDay, CyclePeriod } from '../cycle/index.js';
 import { Band } from '../band/index.js';
+import { WeightLog, recordProfileWeight } from '../weight/index.js';
 import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
 
 //Loads a user or throws ACCOUNT_NOT_FOUND.
@@ -29,7 +29,8 @@ const orNull = <T, R>(value: T | null, check: (value: T) => R): R | null =>
 
 const clockTime = (value: string | null) => orNull(value, checkClockTime);
 
-//Updates the given profile fields; null clears height, weight or birth date.
+//Updates the given profile fields; null clears height, weight or birth date. A new weight is
+//also logged as today's entry in the weight history.
 export const updateProfile = async (user: IUser, input: UpdateProfileInput): Promise<IUser> => {
   if (input.name != null) user.name = cleanText(input.name, 80, 'name');
   if (input.gender != null) user.gender = input.gender;
@@ -56,6 +57,9 @@ export const updateProfile = async (user: IUser, input: UpdateProfileInput): Pro
   }
 
   await user.save();
+  if (input.weightKg != null && user.weightKg != null) {
+    await recordProfileWeight(user, user.weightKg);
+  }
   return user;
 };
 
@@ -99,6 +103,7 @@ const USER_OWNED = [
   CyclePeriod,
   CycleDay,
   Band,
+  WeightLog,
 ] as unknown as Model<{
   user: unknown;
 }>[];
@@ -144,11 +149,4 @@ export const purgeDeletedUsers = async (): Promise<number> => {
     }
   }
   return erased;
-};
-
-//BMI from height and weight, or null if either is missing.
-export const calculateBMI = (heightCm: number | null, weightKg: number | null): number | null => {
-  if (!heightCm || !weightKg) return null;
-  const metres = heightCm / 100;
-  return roundTo(weightKg / (metres * metres), 1);
 };

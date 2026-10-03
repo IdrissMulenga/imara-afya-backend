@@ -4,8 +4,9 @@ import * as habit from './habit/index.js';
 import * as checkin from './checkin/index.js';
 import * as cycle from './cycle/index.js';
 import * as band from './band/index.js';
+import * as weight from './weight/index.js';
 
-const modules = [user, auth, habit, checkin, cycle, band];
+const modules = [user, auth, habit, checkin, cycle, band, weight];
 
 //Base Query and Mutation types; each module extends them.
 const baseTypeDefs = /* GraphQL */ `

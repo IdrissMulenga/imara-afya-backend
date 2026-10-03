@@ -1,5 +1,6 @@
 import * as userService from './user.service.js';
 import { withUser } from '../../shared/resolve.js';
+import { calculateBMI } from '../../shared/numbers.js';
 import type { IUser } from './user.model.js';
 import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
 
@@ -27,6 +28,6 @@ export const userResolvers = {
     id: (user: IUser) => String(user._id),
     birthDate: (user: IUser) => user.birthDate?.toISOString() ?? null,
     createdAt: (user: IUser) => user.createdAt.toISOString(),
-    bmi: (user: IUser) => userService.calculateBMI(user.heightCm, user.weightKg),
+    bmi: (user: IUser) => calculateBMI(user.heightCm, user.weightKg),
   },
 };
