@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildInsights,
   dailyMoods,
+  explainedBy,
   findPatterns,
   heldFixedGap,
   summarizePeriod,
@@ -174,4 +175,47 @@ test('this week and last week are consecutive seven-day periods ending today', (
   assert.equal(insights.lastWeek.start, '2026-09-20');
   assert.equal(insights.lastWeek.end, '2026-09-26');
   assert.deepEqual(insights.patterns, []);
+});
+
+test('difference always equals the two averages shown', () => {
+  //Unrounded means are 4.04 and 3.46: a 0.58 gap, shown as 4.0 and 3.5.
+  const scores = [4, 4, 4, 4, 4.2, 3.5, 3.5, 3.5, 3.5, 3.3];
+  const { habits, moods } = series(10, (i) => ({
+    habit: { sleepHours: i < 5 ? 8 : 5 },
+    mood: scores[i],
+  }));
+
+  const [pattern] = findPatterns(habits, moods, goals);
+  assert.equal(pattern.goalMetAverage, 4);
+  assert.equal(pattern.goalMissedAverage, 3.5);
+  assert.equal(pattern.difference, 0.5);
+});
+
+test('days the band was not worn (0 steps, 0 sleep) are left out', () => {
+  const habits: HabitValues[] = [];
+  for (let i = 0; i < 7; i += 1) {
+    const worn = i >= 3;
+    habits.push(
+      habit(addDays(TODAY, -i), worn ? { steps: 9000, sleepHours: 8 } : { steps: 0, sleepHours: 0 })
+    );
+  }
+
+  const period = summarizePeriod(habits, [], goals, addDays(TODAY, -6), TODAY);
+  assert.equal(period.steps, 9000);
+  assert.equal(period.sleepHours, 8);
+  assert.equal(period.stepGoalDays, 4);
+  assert.equal(period.sleepGoalDays, 4);
+});
+
+test('a pattern is kept when the stronger habit was logged on too few of the same days', () => {
+  //Water logged for 12 days; the band only arrived for the last 2.
+  const water = Array.from({ length: 12 }, (_, i) => ({
+    day: addDays(TODAY, -i),
+    met: i % 2 === 0,
+    score: i % 2 === 0 ? 4 : 2,
+  }));
+  const sleep = water.slice(0, 2).map((sample) => ({ ...sample, score: 5 }));
+
+  assert.equal(heldFixedGap(water, sleep), null);
+  assert.equal(explainedBy(water, 2, sleep), false);
 });

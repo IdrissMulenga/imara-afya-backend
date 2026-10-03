@@ -28,18 +28,18 @@ const MIN_DAYS_PER_GROUP = 2;
 //Most check-ins one user can log in a day.
 const CHECKINS_PER_DAY = 10;
 
-//A factor's value for a day, or null when it was not recorded. Water counts only on days with
-//at least one glass, since a band sync leaves water at 0 on days it was never logged.
+//A recorded value, or null for a missing one or 0: a band sync leaves water at 0 on days it was
+//never logged, and a band that was not worn reports 0 steps and 0 sleep.
+const recorded = (value: number | null): number | null =>
+  value != null && Number.isFinite(value) && value > 0 ? value : null;
+
 const FACTORS: Record<
   InsightFactor,
   { value: (day: HabitValues) => number | null; goal: (goals: Goals) => number }
 > = {
-  SLEEP: { value: (day) => day.sleepHours, goal: (goals) => goals.sleep },
-  STEPS: { value: (day) => day.steps, goal: (goals) => goals.steps },
-  WATER: {
-    value: (day) => (day.waterGlasses > 0 ? day.waterGlasses : null),
-    goal: (goals) => goals.water,
-  },
+  SLEEP: { value: (day) => recorded(day.sleepHours), goal: (goals) => goals.sleep },
+  STEPS: { value: (day) => recorded(day.steps), goal: (goals) => goals.steps },
+  WATER: { value: (day) => recorded(day.waterGlasses), goal: (goals) => goals.water },
 };
 
 const OUTCOMES: Record<InsightOutcome, (day: MoodValues) => number> = {
@@ -79,19 +79,17 @@ export const summarizePeriod = (
   const habitDays = inWindow(habits, start, end);
   const moodDays = inWindow(moods, start, end);
 
-  const recorded = (factor: InsightFactor): number[] =>
-    habitDays
-      .map(FACTORS[factor].value)
-      .filter((value): value is number => value != null && Number.isFinite(value));
+  const values = (factor: InsightFactor): number[] =>
+    habitDays.map(FACTORS[factor].value).filter((value): value is number => value != null);
   const goalDays = (factor: InsightFactor): number =>
-    recorded(factor).filter((value) => value >= FACTORS[factor].goal(goals)).length;
+    values(factor).filter((value) => value >= FACTORS[factor].goal(goals)).length;
 
   return {
     start,
     end,
-    waterGlasses: averageOrNull(recorded('WATER'), 1),
-    steps: averageOrNull(recorded('STEPS'), 0),
-    sleepHours: averageOrNull(recorded('SLEEP'), 1),
+    waterGlasses: averageOrNull(values('WATER'), 1),
+    steps: averageOrNull(values('STEPS'), 0),
+    sleepHours: averageOrNull(values('SLEEP'), 1),
     mood: averageOrNull(
       moodDays.map((day) => day.mood),
       1
@@ -152,11 +150,17 @@ export const heldFixedGap = (candidate: Sample[], other: Sample[]): number | nul
   return weight > 0 ? weighted / weight : null;
 };
 
-//True when the candidate's gap shrinks below MIN_DIFFERENCE, flips, or cannot be measured once
-//the stronger pattern's factor is held fixed.
-const explainedBy = (candidate: Sample[], gap: number, stronger: Sample[]): boolean => {
+//True when the candidate's gap shrinks below MIN_DIFFERENCE or flips once the stronger pattern's
+//factor is held fixed, or when the two share enough days but never separate. Too few shared days
+//to compare leaves the candidate standing.
+export const explainedBy = (candidate: Sample[], gap: number, stronger: Sample[]): boolean => {
   const fixed = heldFixedGap(candidate, stronger);
-  return fixed === null || Math.sign(fixed) !== Math.sign(gap) || Math.abs(fixed) < MIN_DIFFERENCE;
+  if (fixed === null) {
+    const strongerDays = new Set(stronger.map((sample) => sample.day));
+    const shared = candidate.filter((sample) => strongerDays.has(sample.day)).length;
+    return shared >= 2 * MIN_DAYS_PER_SIDE;
+  }
+  return Math.sign(fixed) !== Math.sign(gap) || Math.abs(fixed) < MIN_DIFFERENCE;
 };
 
 //Mood and energy on goal-met versus goal-missed days, for each factor, largest gap first. A gap
@@ -178,7 +182,7 @@ export const findPatterns = (
       for (const mood of moods) {
         const habit = habitByDay.get(mood.day);
         const value = habit ? FACTORS[factor].value(habit) : null;
-        if (value == null || !Number.isFinite(value)) continue;
+        if (value == null) continue;
         samples.push({ day: mood.day, met: value >= goal, score: OUTCOMES[outcome](mood) });
       }
 
@@ -189,17 +193,19 @@ export const findPatterns = (
       const gap = mean(met) - mean(missed);
       if (Math.abs(gap) < MIN_DIFFERENCE || welchT(met, missed) < MIN_T_STATISTIC) continue;
 
+      const goalMetAverage = roundTo(mean(met), 1);
+      const goalMissedAverage = roundTo(mean(missed), 1);
       candidates.push({
         samples,
         gap,
         pattern: {
           factor,
           outcome,
-          goalMetAverage: roundTo(mean(met), 1),
-          goalMissedAverage: roundTo(mean(missed), 1),
+          goalMetAverage,
+          goalMissedAverage,
           goalMetDays: met.length,
           goalMissedDays: missed.length,
-          difference: roundTo(gap, 1),
+          difference: roundTo(goalMetAverage - goalMissedAverage, 1),
         },
       });
     }

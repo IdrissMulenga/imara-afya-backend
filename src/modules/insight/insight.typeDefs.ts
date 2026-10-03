@@ -10,7 +10,7 @@ export const insightTypeDefs = /* GraphQL */ `
     ENERGY
   }
 
-  "Averages and goal-met days over seven days (start..end, YYYY-MM-DD). An average is null when nothing was logged; water counts only days with at least one glass."
+  "Averages and goal-met days over seven days (start..end, YYYY-MM-DD). An average is null when nothing was logged; a 0 counts as not logged (no water entered, or the band not worn)."
   type InsightPeriod {
     start: String!
     end: String!
