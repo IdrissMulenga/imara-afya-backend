@@ -169,6 +169,7 @@ const RULES: Record<string, Rule> = {
     ],
   },
   deleteAccount: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 5 }] },
+  emailMyData: { keyBy: 'user', budgets: [{ windowMs: DAY, max: 3 }] },
 
   pairBand: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 10 }] },
   unpairBand: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 10 }] },

@@ -1,4 +1,5 @@
 import * as userService from './user.service.js';
+import { emailMyData } from './export.service.js';
 import { withUser } from '../../shared/resolve.js';
 import { calculateBMI } from '../../shared/numbers.js';
 import type { IUser } from './user.model.js';
@@ -22,6 +23,8 @@ export const userResolvers = {
     deleteAccount: withUser((user, args: { input: { password: string } }) =>
       userService.deleteAccount(user, args.input.password)
     ),
+
+    emailMyData: withUser((user) => emailMyData(user)),
   },
 
   User: {

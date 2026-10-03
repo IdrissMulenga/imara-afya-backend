@@ -21,6 +21,8 @@ export const userTypeDefs = /* GraphQL */ `
     waterGoalGlasses: Float!
     stepGoal: Int!
     sleepGoalHours: Float!
+    "Target weight in kg; null when not set."
+    weightGoalKg: Float
     "Sleep schedule as HH:MM in the user's timezone; null when not set."
     sleepBedtime: String
     sleepWakeTime: String
@@ -58,7 +60,7 @@ export const userTypeDefs = /* GraphQL */ `
     weightKg: Float
   }
 
-  "Omitted fields are unchanged; null clears any of the sleep schedule times."
+  "Omitted fields are unchanged; null clears the weight goal or any of the sleep schedule times."
   input PreferencesInput {
     language: Language
     units: Units
@@ -67,6 +69,8 @@ export const userTypeDefs = /* GraphQL */ `
     waterGoalGlasses: Float
     stepGoal: Int
     sleepGoalHours: Float
+    "20-400 kg."
+    weightGoalKg: Float
     sleepBedtime: String
     sleepWakeTime: String
     sleepWeekendBedtime: String
@@ -85,5 +89,7 @@ export const userTypeDefs = /* GraphQL */ `
     updateProfile(input: UpdateProfileInput!): User!
     setPreferences(input: PreferencesInput!): User!
     deleteAccount(input: DeleteAccountInput!): Boolean!
+    "Emails a JSON file of everything the app holds about the user to their confirmed address. EMAIL_NOT_VERIFIED (reason EXPORT) until it is confirmed; 3 a day."
+    emailMyData: Boolean!
   }
 `;

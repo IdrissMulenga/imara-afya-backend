@@ -7,6 +7,7 @@ export const weightResolvers = {
     weightHistory: withUser((user, args: { days?: number | null }) =>
       weightService.getHistory(user, args.days)
     ),
+    weightSummary: withUser((user) => weightService.getSummary(user)),
   },
 
   Mutation: {

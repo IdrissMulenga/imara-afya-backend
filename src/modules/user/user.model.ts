@@ -28,6 +28,8 @@ export interface IUser extends Document {
   waterGoalGlasses: number;
   stepGoal: number;
   sleepGoalHours: number;
+  //Target weight in kg; null when not set.
+  weightGoalKg: number | null;
   //Sleep schedule as HH:MM in the user's timezone; null when not set.
   sleepBedtime: string | null;
   sleepWakeTime: string | null;
@@ -72,6 +74,7 @@ const userSchema = new Schema<IUser>(
     waterGoalGlasses: { type: Number, default: 8, min: 1, max: 30 },
     stepGoal: { type: Number, default: 8000, min: 500, max: 100000 },
     sleepGoalHours: { type: Number, default: 8, min: 3, max: 14 },
+    weightGoalKg: { type: Number, default: null, min: 20, max: 400 },
     sleepBedtime: { type: String, default: null, match: CLOCK_TIME },
     sleepWakeTime: { type: String, default: null, match: CLOCK_TIME },
     sleepWeekendBedtime: { type: String, default: null, match: CLOCK_TIME },

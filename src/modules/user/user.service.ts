@@ -5,6 +5,7 @@ import { clearAvatar } from '../upload/index.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { passwordMatches } from '../../shared/password.js';
 import { cleanText, checkClockTime, checkTimezone, inRange } from '../../shared/validation.js';
+import { roundTo } from '../../shared/numbers.js';
 import { HabitLog } from '../habit/index.js';
 import { CheckIn } from '../checkin/index.js';
 import { CycleDay, CyclePeriod } from '../cycle/index.js';
@@ -63,7 +64,7 @@ export const updateProfile = async (user: IUser, input: UpdateProfileInput): Pro
   return user;
 };
 
-//Updates language, units, timezone, goals and the sleep schedule.
+//Updates language, units, timezone, goals (water, steps, sleep, weight) and the sleep schedule.
 export const setPreferences = async (user: IUser, input: PreferencesInput): Promise<IUser> => {
   //Missing or null leaves a setting as it is; only the sleep times can be cleared with null.
   if (input.language != null) user.language = input.language;
@@ -80,6 +81,11 @@ export const setPreferences = async (user: IUser, input: PreferencesInput): Prom
   }
   if (input.sleepGoalHours != null) {
     user.sleepGoalHours = inRange(input.sleepGoalHours, 3, 14, 'sleepGoal');
+  }
+  if (input.weightGoalKg !== undefined) {
+    user.weightGoalKg = orNull(input.weightGoalKg, (kg) =>
+      roundTo(inRange(kg, 20, 400, 'weightGoal'), 1)
+    );
   }
   if (input.sleepBedtime !== undefined) user.sleepBedtime = clockTime(input.sleepBedtime);
   if (input.sleepWakeTime !== undefined) user.sleepWakeTime = clockTime(input.sleepWakeTime);

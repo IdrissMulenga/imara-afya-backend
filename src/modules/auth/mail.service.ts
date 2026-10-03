@@ -4,7 +4,7 @@ import { appError, ErrorCode } from '../../shared/errors.js';
 import type { OtpPurpose } from './otp.model.js';
 import { maskEmail } from '../../shared/validation.js';
 
-//Sends one-time codes by email through Resend.
+//Sends one-time codes and the data export by email through Resend.
 const RESEND_URL = 'https://api.resend.com/emails';
 const TIMEOUT_MS = 30_000;
 
@@ -70,6 +70,98 @@ const EXPIRES: Record<Language, (minutes: number) => string> = {
   rn: (m) => `Izi nomero zizorangira mu minota ${m}.`,
 };
 
+type Mail = {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+  attachments?: { filename: string; content: string }[];
+  //What is being sent, for the logs ("SIGNUP code", "data export").
+  label: string;
+  //Logged in development when no key is set.
+  unsentNote: string;
+  //The error thrown when it cannot be sent.
+  failure: () => GraphQLError;
+};
+
+//Sends one email through Resend. Development without a key logs it instead; development
+//delivery failures are logged, not thrown.
+const deliver = async (mail: Mail): Promise<void> => {
+  if (!env.RESEND_API_KEY) {
+    if (env.IS_PRODUCTION) {
+      console.error('[mail] not configured — could not send to', maskEmail(mail.to));
+      throw mail.failure();
+    }
+    console.warn(`[mail] NOT CONFIGURED — ${mail.unsentNote}`);
+    return;
+  }
+
+  //Development only: MAIL_DEV_TO receives every email.
+  const recipient = !env.IS_PRODUCTION && env.MAIL_DEV_TO ? env.MAIL_DEV_TO : mail.to;
+  const redirected = recipient !== mail.to;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  try {
+    const response = await fetch(RESEND_URL, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: env.MAIL_FROM,
+        to: [recipient],
+        subject: redirected ? `[${maskEmail(mail.to)}] ${mail.subject}` : mail.subject,
+        html: mail.html,
+        text: mail.text,
+        ...(mail.attachments ? { attachments: mail.attachments } : {}),
+        ...(env.MAIL_REPLY_TO ? { reply_to: env.MAIL_REPLY_TO } : {}),
+      }),
+    });
+
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      console.error('[mail] Resend refused:', response.status, detail.slice(0, 200));
+
+      if (env.MAIL_FROM.endsWith('@resend.dev')) {
+        console.error(
+          '[mail] MAIL_FROM is the Resend TEST sender. It can only deliver to\n' +
+            '       the address on your own Resend account. To reach anyone else,\n' +
+            '       verify a domain at resend.com/domains and set MAIL_FROM to an\n' +
+            '       address on it, e.g. MAIL_FROM="Imara Afya <codes@imaraco.ltd>".'
+        );
+      }
+      throw mail.failure();
+    }
+
+    console.log(
+      redirected
+        ? `[mail] sent ${mail.label} for ${maskEmail(mail.to)} -> ${env.MAIL_DEV_TO} (dev redirect)`
+        : `[mail] sent ${mail.label} to ${maskEmail(mail.to)}`
+    );
+  } catch (error) {
+    if (!env.IS_PRODUCTION) {
+      console.warn(`[mail] delivery failed in development (${mail.label}):`, error);
+      return;
+    }
+    if (error instanceof GraphQLError) throw error;
+
+    console.error('[mail] request failed:', error);
+    throw mail.failure();
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const codeFailure = () =>
+  appError(
+    ErrorCode.OTP_SEND_FAILED,
+    'We could not send your code right now. Please try again shortly.'
+  );
+
 //Emails a code in the user's language (logs it instead in development without a key).
 export const sendOtpEmail = async (params: {
   to: string;
@@ -106,79 +198,71 @@ export const sendOtpEmail = async (params: {
     );
   }
 
-  if (!env.RESEND_API_KEY) {
-    if (env.IS_PRODUCTION) {
-      console.error('[mail] not configured — could not send to', maskEmail(params.to));
-      throw appError(
-        ErrorCode.OTP_SEND_FAILED,
-        'We could not send your code right now. Please try again shortly.'
-      );
-    }
-    console.warn(`[mail] NOT CONFIGURED — code for ${maskEmail(params.to)} is ${params.code}`);
-    return;
-  }
+  await deliver({
+    to: params.to,
+    subject,
+    html,
+    text,
+    label: `${params.purpose} code`,
+    unsentNote: `code for ${maskEmail(params.to)} is ${params.code}`,
+    failure: codeFailure,
+  });
+};
 
-  //Development only: MAIL_DEV_TO receives every code.
-  const recipient = !env.IS_PRODUCTION && env.MAIL_DEV_TO ? env.MAIL_DEV_TO : params.to;
-  const redirected = recipient !== params.to;
+//The data export email, per language.
+const EXPORT_COPY: Record<Language, { subject: string; line: string; care: string }> = {
+  en: {
+    subject: 'Your Imara Afya data',
+    line: 'Here is a copy of everything Imara Afya holds about you, attached as a file you can open with any text editor.',
+    care: 'It includes your health records. Keep it somewhere private, and do not forward it to anyone you do not trust.',
+  },
+  fr: {
+    subject: 'Vos données Imara Afya',
+    line: 'Voici une copie de tout ce qu’Imara Afya conserve sur vous, en pièce jointe, lisible avec n’importe quel éditeur de texte.',
+    care: 'Elle contient vos données de santé. Gardez-la en lieu sûr et ne la transférez qu’à des personnes de confiance.',
+  },
+  sw: {
+    subject: 'Data yako ya Imara Afya',
+    line: 'Hii ni nakala ya kila kitu Imara Afya inachohifadhi kukuhusu, kama faili iliyoambatishwa unayoweza kufungua kwa programu yoyote ya maandishi.',
+    care: 'Ina kumbukumbu zako za afya. Ihifadhi mahali pa faragha, na usiitume kwa mtu usiyemwamini.',
+  },
+  rn: {
+    subject: 'Amakuru yawe ya Imara Afya',
+    line: 'Iyi ni kopi y’ivyo Imara Afya ibika vyose ku bikwerekeye, nk’idosiye ifatanijwe ushobora kwugurura n’iporogaramu iyo ari yo yose y’inyandiko.',
+    care: 'Irimwo amakuru y’amagara yawe. Yibike ahantu h’ibanga, ntuyirungikire uwo utizigira.',
+  },
+};
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+//Emails the user's data as a JSON attachment.
+export const sendDataExportEmail = async (params: {
+  to: string;
+  language: Language;
+  filename: string;
+  json: string;
+}): Promise<void> => {
+  const copy = EXPORT_COPY[params.language];
+  const html = `<!doctype html>
+<html><body style="margin:0;padding:24px;background:#f5f7f6;font-family:Helvetica,Arial,sans-serif;color:#14281f">
+  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px">
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.5">${copy.line}</p>
+    <p style="margin:0;font-size:13px;line-height:1.5;color:#4a6b5c">${copy.care}</p>
+  </div>
+</body></html>`;
 
-  try {
-    const response = await fetch(RESEND_URL, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: env.MAIL_FROM,
-        to: [recipient],
-        subject: redirected ? `[${maskEmail(params.to)}] ${subject}` : subject,
-        html,
-        text,
-        ...(env.MAIL_REPLY_TO ? { reply_to: env.MAIL_REPLY_TO } : {}),
-      }),
-    });
-
-    if (!response.ok) {
-      const detail = await response.text().catch(() => '');
-      console.error('[mail] Resend refused:', response.status, detail.slice(0, 200));
-
-      if (env.MAIL_FROM.endsWith('@resend.dev')) {
-        console.error(
-          '[mail] MAIL_FROM is the Resend TEST sender. It can only deliver to\n' +
-            '       the address on your own Resend account. To reach anyone else,\n' +
-            '       verify a domain at resend.com/domains and set MAIL_FROM to an\n' +
-            '       address on it, e.g. MAIL_FROM="Imara Afya <codes@imaraco.ltd>".'
-        );
-      }
-      throw appError(
-        ErrorCode.OTP_SEND_FAILED,
-        'We could not send your code right now. Please try again shortly.'
-      );
-    }
-
-    console.log(
-      redirected
-        ? `[mail] sent ${params.purpose} code for ${maskEmail(params.to)} -> ${env.MAIL_DEV_TO} (dev redirect)`
-        : `[mail] sent ${params.purpose} code to ${maskEmail(params.to)}`
-    );
-  } catch (error) {
-    if (!env.IS_PRODUCTION) {
-      console.warn('[mail] delivery failed in development; use the code printed above:', error);
-      return;
-    }
-    if (error instanceof GraphQLError) throw error;
-
-    console.error('[mail] request failed:', error);
-    throw appError(
-      ErrorCode.OTP_SEND_FAILED,
-      'We could not send your code right now. Please try again shortly.'
-    );
-  } finally {
-    clearTimeout(timeout);
-  }
+  await deliver({
+    to: params.to,
+    subject: copy.subject,
+    html,
+    text: [copy.line, '', copy.care].join('\n'),
+    attachments: [
+      { filename: params.filename, content: Buffer.from(params.json, 'utf8').toString('base64') },
+    ],
+    label: 'data export',
+    unsentNote: `data export for ${maskEmail(params.to)} not sent (${params.json.length} characters)`,
+    failure: () =>
+      appError(
+        ErrorCode.EXPORT_SEND_FAILED,
+        'We could not email your data right now. Please try again shortly.'
+      ),
+  });
 };

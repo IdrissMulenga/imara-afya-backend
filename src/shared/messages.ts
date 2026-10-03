@@ -17,6 +17,8 @@ const en: Table = {
   [ErrorCode.INVALID_CREDENTIALS]: 'That email or password is not right.',
   [ErrorCode.EMAIL_NOT_VERIFIED]:
     'Please confirm your email address from the device you signed up on first.',
+  'EMAIL_NOT_VERIFIED.EXPORT':
+    'Please confirm your email address first, so your data goes to the right inbox.',
   [ErrorCode.ACCOUNT_NOT_FOUND]: 'That account no longer exists.',
 
   [ErrorCode.OTP_NOT_FOUND]: 'That code is no longer valid. Please ask for a new one.',
@@ -27,6 +29,8 @@ const en: Table = {
   [ErrorCode.OTP_COOLDOWN]: 'Please wait a moment before asking for another code.',
   [ErrorCode.OTP_RESEND_LIMIT]: 'You have asked for too many codes. Please try again in an hour.',
   [ErrorCode.OTP_SEND_FAILED]: 'We could not send your code right now. Please try again shortly.',
+  [ErrorCode.EXPORT_SEND_FAILED]:
+    'We could not email your data right now. Please try again shortly.',
 
   [ErrorCode.INVALID_RESET_TOKEN]: 'That reset request has expired. Please start again.',
   'INVALID_RESET_TOKEN.USED': 'That reset request has already been used. Please start again.',
@@ -93,6 +97,8 @@ const fr: Table = {
   [ErrorCode.INVALID_CREDENTIALS]: 'Cet e-mail ou ce mot de passe est incorrect.',
   [ErrorCode.EMAIL_NOT_VERIFIED]:
     'Confirmez d’abord votre adresse e-mail depuis l’appareil utilisé pour l’inscription.',
+  'EMAIL_NOT_VERIFIED.EXPORT':
+    'Confirmez d’abord votre adresse e-mail, pour que vos données arrivent à la bonne adresse.',
   [ErrorCode.ACCOUNT_NOT_FOUND]: 'Ce compte n’existe plus.',
 
   [ErrorCode.OTP_NOT_FOUND]: 'Ce code n’est plus valable. Demandez-en un nouveau.',
@@ -104,6 +110,8 @@ const fr: Table = {
   [ErrorCode.OTP_COOLDOWN]: 'Patientez un instant avant de demander un autre code.',
   [ErrorCode.OTP_RESEND_LIMIT]: 'Vous avez demandé trop de codes. Réessayez dans une heure.',
   [ErrorCode.OTP_SEND_FAILED]: 'Impossible d’envoyer votre code pour le moment. Réessayez.',
+  [ErrorCode.EXPORT_SEND_FAILED]:
+    'Impossible d’envoyer vos données par e-mail pour le moment. Réessayez.',
 
   [ErrorCode.INVALID_RESET_TOKEN]: 'Cette demande a expiré. Veuillez recommencer.',
   'INVALID_RESET_TOKEN.USED': 'Cette demande a déjà été utilisée. Veuillez recommencer.',
@@ -171,6 +179,8 @@ const sw: Table = {
   [ErrorCode.INVALID_CREDENTIALS]: 'Barua pepe au nywila si sahihi.',
   [ErrorCode.EMAIL_NOT_VERIFIED]:
     'Tafadhali thibitisha barua pepe yako kwanza kwenye kifaa ulichojisajili.',
+  'EMAIL_NOT_VERIFIED.EXPORT':
+    'Tafadhali thibitisha barua pepe yako kwanza, ili data yako ifike kwenye anwani sahihi.',
   [ErrorCode.ACCOUNT_NOT_FOUND]: 'Akaunti hiyo haipo tena.',
 
   [ErrorCode.OTP_NOT_FOUND]: 'Namba hiyo haifai tena. Tafadhali omba mpya.',
@@ -181,6 +191,8 @@ const sw: Table = {
   [ErrorCode.OTP_COOLDOWN]: 'Subiri kidogo kabla ya kuomba namba nyingine.',
   [ErrorCode.OTP_RESEND_LIMIT]: 'Umeomba namba nyingi mno. Jaribu tena baada ya saa moja.',
   [ErrorCode.OTP_SEND_FAILED]: 'Hatukuweza kutuma namba yako sasa. Jaribu tena punde.',
+  [ErrorCode.EXPORT_SEND_FAILED]:
+    'Hatukuweza kutuma data yako kwa barua pepe sasa. Jaribu tena punde.',
 
   [ErrorCode.INVALID_RESET_TOKEN]: 'Ombi hilo limeisha muda. Tafadhali anza upya.',
   'INVALID_RESET_TOKEN.USED': 'Ombi hilo tayari limetumika. Tafadhali anza upya.',
@@ -248,6 +260,8 @@ const rn: Table = {
   [ErrorCode.INVALID_CREDENTIALS]: 'Iyo meyili canke iryo jambo ryibanga si vyo.',
   [ErrorCode.EMAIL_NOT_VERIFIED]:
     'Banza wemeze imeyili yawe ukoresheje igikoresho wiyandikishijeko.',
+  'EMAIL_NOT_VERIFIED.EXPORT':
+    'Banza wemeze imeyili yawe, kugira amakuru yawe ashike kuri aderesi nyayo.',
   [ErrorCode.ACCOUNT_NOT_FOUND]: 'Iyo konte ntikiriho.',
 
   [ErrorCode.OTP_NOT_FOUND]: 'Izo nomero ntizigikora. Saba izindi.',
@@ -258,6 +272,8 @@ const rn: Table = {
   [ErrorCode.OTP_COOLDOWN]: 'Rindira gato imbere yo gusaba izindi nomero.',
   [ErrorCode.OTP_RESEND_LIMIT]: 'Wasavye nomero nyinshi cane. Gerageza mu isaha imwe.',
   [ErrorCode.OTP_SEND_FAILED]: 'Ntitwashoboye kurungika nomero zawe ubu. Gerageza bukebuke.',
+  [ErrorCode.EXPORT_SEND_FAILED]:
+    'Ntitwashoboye kukurungikira amakuru yawe kuri imeyili ubu. Gerageza bukebuke.',
 
   [ErrorCode.INVALID_RESET_TOKEN]: 'Ico gisabisho carangiye. Tangura bushasha.',
   'INVALID_RESET_TOKEN.USED': 'Ico gisabisho carakoreshejwe. Tangura bushasha.',
@@ -341,6 +357,12 @@ export const FIELDS = {
     fr: 'Objectif de sommeil',
     sw: 'Lengo la usingizi',
     rn: 'Intumbero y’ibitotsi',
+  },
+  weightGoal: {
+    en: 'Weight goal',
+    fr: 'Objectif de poids',
+    sw: 'Lengo la uzito',
+    rn: 'Intumbero y’uburemere',
   },
   water: { en: 'Water', fr: 'Eau', sw: 'Maji', rn: 'Amazi' },
   steps: { en: 'Steps', fr: 'Pas', sw: 'Hatua', rn: 'Intambwe' },
