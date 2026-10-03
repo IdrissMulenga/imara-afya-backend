@@ -28,3 +28,11 @@ AUTH_DESIGN.md
 SCALING.md
 *.docx
 Claude outputs/
+
+# Local AI assistant skills, kept on this computer only.
+.claude/
+.agents/
+
+# Markdown files stay local, except the README.
+*.md
+!README.md
