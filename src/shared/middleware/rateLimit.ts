@@ -173,6 +173,8 @@ const RULES: Record<string, Rule> = {
   pairBand: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 10 }] },
   unpairBand: { keyBy: 'user', budgets: [{ windowMs: HOUR, max: 10 }] },
   syncBand: { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 10 }] },
+
+  insights: { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 20 }] },
 };
 
 const DEFAULT_READ: Rule = { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 120 }] };
