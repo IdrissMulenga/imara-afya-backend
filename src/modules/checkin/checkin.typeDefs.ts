@@ -43,6 +43,10 @@ export const checkInTypeDefs = /* GraphQL */ `
     mood: Int!
     energy: Int!
     note: String
+    "When it was made (ISO), up to 7 days back; defaults to now. Set by the app when it sends a check-in saved offline."
+    at: String
+    "An id the app makes for this check-in (8-64 letters, digits, - or _). Sending it again returns the check-in already saved instead of a second one."
+    clientId: String
   }
 
   extend type Query {

@@ -5,6 +5,7 @@ import { CheckIn } from '../checkin/index.js';
 import { CycleDay, CyclePeriod } from '../cycle/index.js';
 import { Band } from '../band/index.js';
 import { WeightLog } from '../weight/index.js';
+import { VitalReading } from '../vital/index.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { dayInZone } from '../../shared/datetime.js';
 
@@ -17,7 +18,7 @@ const iso = (date: Date | null | undefined): string | null => (date ? date.toISO
 //added to a model later is left out until it is added here.
 export const buildExport = async (user: IUser) => {
   const mine = { user: user._id };
-  const [habits, checkIns, periods, cycleDays, weights, band, devices] = await Promise.all([
+  const [habits, checkIns, periods, cycleDays, weights, band, devices, vitals] = await Promise.all([
     HabitLog.find(mine)
       .select('day waterGlasses steps sleepHours')
       .sort({ day: 1 })
@@ -41,6 +42,11 @@ export const buildExport = async (user: IUser) => {
       .sort({ lastSeenAt: -1 })
       .limit(MAX_ROWS)
       .lean<{ label: string; lastSeenAt: Date; createdAt?: Date }[]>(),
+    VitalReading.find(mine)
+      .select('kind at day systolic diastolic pulse glucoseMmol glucoseContext note')
+      .sort({ at: 1 })
+      .limit(MAX_ROWS)
+      .lean(),
   ]);
 
   return {
@@ -97,6 +103,17 @@ export const buildExport = async (user: IUser) => {
       })),
     },
     weight: weights.map((w) => ({ day: w.day, kg: w.kg })),
+    vitals: vitals.map((v) => ({
+      kind: v.kind,
+      at: iso(v.at),
+      day: v.day,
+      systolic: v.systolic,
+      diastolic: v.diastolic,
+      pulse: v.pulse,
+      glucoseMmol: v.glucoseMmol,
+      glucoseContext: v.glucoseContext,
+      note: v.note,
+    })),
     band: band
       ? {
           bandId: band.bandId,

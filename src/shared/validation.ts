@@ -131,6 +131,34 @@ export const cleanText = (raw: string, maxLength: number, field: Field): string 
   return text;
 };
 
+//Times may be a little ahead of the server clock, for phones whose clock runs fast.
+const CLOCK_SKEW_MS = 5 * 60_000;
+
+//Checks an ISO time from the last `maxDaysBack` days (not in the future).
+export const checkPastTime = (raw: string, maxDaysBack: number): Date => {
+  const at = new Date(raw);
+  const now = Date.now();
+  if (
+    Number.isNaN(at.getTime()) ||
+    at.getTime() > now + CLOCK_SKEW_MS ||
+    at.getTime() < now - maxDaysBack * 24 * 60 * 60 * 1000
+  ) {
+    throw appError(ErrorCode.BAD_USER_INPUT, 'That time is not valid.', { reason: 'INVALID_TIME' });
+  }
+  return at;
+};
+
+//Checks an id the app made for an entry, so a resent entry is recognised: 8-64 letters, digits,
+//dashes or underscores.
+export const checkClientId = (raw: string): string => {
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(raw)) {
+    throw appError(ErrorCode.BAD_USER_INPUT, 'That entry id is not valid.', {
+      reason: 'INVALID_CLIENT_ID',
+    });
+  }
+  return raw;
+};
+
 //Checks a real calendar day written as YYYY-MM-DD.
 export const checkDay = (raw: string): string => {
   const day = String(raw ?? '').trim();

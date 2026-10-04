@@ -176,6 +176,7 @@ const RULES: Record<string, Rule> = {
   syncBand: { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 10 }] },
 
   insights: { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 20 }] },
+  achievements: { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 20 }] },
 };
 
 const DEFAULT_READ: Rule = { keyBy: 'user', budgets: [{ windowMs: MINUTE, max: 120 }] };

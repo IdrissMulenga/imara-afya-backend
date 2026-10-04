@@ -1,8 +1,11 @@
-//Logs a new check-in now.
+//Logs a new check-in, now or at `at` (up to 7 days back). A clientId already used returns the
+//check-in saved with it.
 export interface LogCheckInInput {
   mood: number;
   energy: number;
   note?: string | null;
+  at?: string | null;
+  clientId?: string | null;
 }
 
 export interface CheckInEntry {

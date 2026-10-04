@@ -11,6 +11,7 @@ import { CheckIn } from '../checkin/index.js';
 import { CycleDay, CyclePeriod } from '../cycle/index.js';
 import { Band } from '../band/index.js';
 import { WeightLog, recordProfileWeight } from '../weight/index.js';
+import { VitalReading } from '../vital/index.js';
 import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
 
 //Loads a user or throws ACCOUNT_NOT_FOUND.
@@ -110,6 +111,7 @@ const USER_OWNED = [
   CycleDay,
   Band,
   WeightLog,
+  VitalReading,
 ] as unknown as Model<{
   user: unknown;
 }>[];

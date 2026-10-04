@@ -13,6 +13,8 @@ export interface ICheckIn extends Document {
   //1 (exhausted) to 5 (full of energy).
   energy: number;
   note: string;
+  //The app's id for this check-in, so a resent one is not saved twice.
+  clientId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -25,10 +27,15 @@ const checkInSchema = new Schema<ICheckIn>(
     mood: { type: Number, required: true, min: 1, max: 5 },
     energy: { type: Number, required: true, min: 1, max: 5 },
     note: { type: String, default: '', maxlength: 500 },
+    clientId: { type: String },
   },
   { timestamps: true }
 );
 
 checkInSchema.index({ user: 1, day: -1, at: -1 });
+checkInSchema.index(
+  { user: 1, clientId: 1 },
+  { unique: true, partialFilterExpression: { clientId: { $type: 'string' } } }
+);
 
 export const CheckIn = model<ICheckIn>('CheckIn', checkInSchema);

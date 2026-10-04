@@ -2,7 +2,7 @@ import { isValidObjectId } from 'mongoose';
 import type { IUser } from '../user/index.js';
 import { CheckIn, type ICheckIn } from './checkin.model.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
-import { cleanText, inRange } from '../../shared/validation.js';
+import { checkClientId, checkPastTime, cleanText, inRange } from '../../shared/validation.js';
 import { addDays, dayInZone, streakLength } from '../../shared/datetime.js';
 import { countOr, mean, roundTo } from '../../shared/numbers.js';
 import type {
@@ -18,6 +18,10 @@ const NOTE_MAX = 500;
 const MAX_PER_DAY = 10;
 //How far back a check-in can be deleted.
 const MAX_DELETE_AGE_DAYS = 30;
+//How far back a check-in can be dated (one saved offline and sent later).
+const MAX_BACKDATE_DAYS = 7;
+//MongoDB's duplicate key error.
+const DUPLICATE_KEY = 11000;
 //How many days of history the streak is computed from.
 const STREAK_WINDOW_DAYS = 365;
 const WEEK_DAYS = 7;
@@ -100,15 +104,31 @@ const averages = (days: CheckInDay[], today: string, window: number): CheckInAve
   };
 };
 
-//Logs a new check-in for now, up to MAX_PER_DAY a day.
+//The check-in already saved with this client id, if any.
+const findByClientId = (user: IUser, clientId: string) =>
+  CheckIn.findOne({ user: user._id, clientId }).select(FIELDS).lean<Log | null>();
+
+//Logs a new check-in, now or at input.at, up to MAX_PER_DAY a day. A client id already used
+//returns the check-in saved with it.
 export const logCheckIn = async (user: IUser, input: LogCheckInInput): Promise<CheckInEntry> => {
-  const now = new Date();
-  const day = dayInZone(now, user.timezone);
+  const at = input.at != null ? checkPastTime(input.at, MAX_BACKDATE_DAYS) : new Date();
+  const day = dayInZone(at, user.timezone);
   const mood = inRange(input.mood, 1, 5, 'mood');
   const energy = inRange(input.energy, 1, 5, 'energy');
   const note = input.note != null ? cleanText(input.note, NOTE_MAX, 'note') : '';
+  const clientId = input.clientId != null ? checkClientId(input.clientId) : null;
+
+  if (clientId) {
+    const existing = await findByClientId(user, clientId);
+    if (existing) return toEntry(existing);
+  }
 
   return withDailyLock(`${user._id}:${day}`, async () => {
+    //Sent again while the first was being saved: return that one rather than count it.
+    if (clientId) {
+      const existing = await findByClientId(user, clientId);
+      if (existing) return toEntry(existing);
+    }
     const currentCount = await CheckIn.countDocuments({ user: user._id, day });
     if (!canCreateCheckIn(currentCount, MAX_PER_DAY)) {
       throw appError(
@@ -118,8 +138,25 @@ export const logCheckIn = async (user: IUser, input: LogCheckInInput): Promise<C
       );
     }
 
-    const saved = await CheckIn.create({ user: user._id, day, at: now, mood, energy, note });
-    return toEntry(saved);
+    try {
+      const saved = await CheckIn.create({
+        user: user._id,
+        day,
+        at,
+        mood,
+        energy,
+        note,
+        ...(clientId ? { clientId } : {}),
+      });
+      return toEntry(saved);
+    } catch (error) {
+      //The same check-in sent twice at once: return the one that was saved.
+      if (clientId && (error as { code?: number }).code === DUPLICATE_KEY) {
+        const existing = await findByClientId(user, clientId);
+        if (existing) return toEntry(existing);
+      }
+      throw error;
+    }
   });
 };
 

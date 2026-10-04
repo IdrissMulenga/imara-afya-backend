@@ -6,6 +6,7 @@ import {
   explainedBy,
   findPatterns,
   heldFixedGap,
+  summarizeSleep,
   summarizePeriod,
   welchT,
 } from './insight.service.js';
@@ -218,4 +219,42 @@ test('a pattern is kept when the stronger habit was logged on too few of the sam
 
   assert.equal(heldFixedGap(water, sleep), null);
   assert.equal(explainedBy(water, 2, sleep), false);
+});
+
+test('sleep summary: usual night, regularity and this week’s debt', () => {
+  const steady = series(14, () => ({ habit: { sleepHours: 7 }, mood: 3 })).habits;
+  const s1 = summarizeSleep(steady, 8, TODAY);
+  assert.equal(s1.nights, 14);
+  assert.equal(s1.usualHours, 7);
+  assert.equal(s1.regularity, 'STEADY');
+  assert.equal(s1.debtHours, 7);
+
+  const swinging = series(14, (i) => ({ habit: { sleepHours: i % 2 ? 4 : 9 }, mood: 3 })).habits;
+  assert.equal(summarizeSleep(swinging, 8, TODAY).regularity, 'IRREGULAR');
+
+  const few = series(3, () => ({ habit: { sleepHours: 7 }, mood: 3 })).habits;
+  const s3 = summarizeSleep(few, 8, TODAY);
+  assert.equal(s3.regularity, 'UNKNOWN');
+  assert.equal(s3.variationHours, null);
+});
+
+test('nights not recorded are left out of the sleep summary, and debt never goes negative', () => {
+  const habits = series(7, (i) => ({ habit: { sleepHours: i < 3 ? 9 : null }, mood: 3 })).habits;
+  const s = summarizeSleep(habits, 8, TODAY);
+  assert.equal(s.nights, 3);
+  assert.equal(s.debtHours, 0);
+});
+
+test('mood after regular nights is compared with irregular ones', () => {
+  //Usual sleep 7 h; regular nights (6.5-7.5 h) go with mood 4, irregular ones (4 or 10 h) with 2.
+  const hours = [7, 7.2, 6.8, 7, 7.1, 6.9, 7, 4, 10, 4, 10, 4];
+  const { habits, moods } = series(12, (i) => ({
+    habit: { sleepHours: hours[i] },
+    mood: Math.abs(hours[i] - 7) <= 1 ? 4 : 2,
+  }));
+  const pattern = findPatterns(habits, moods, goals).find((p) => p.factor === 'REGULAR_SLEEP');
+  assert.ok(pattern, 'expected a REGULAR_SLEEP pattern');
+  assert.equal(pattern.outcome, 'MOOD');
+  assert.equal(pattern.goalMetAverage, 4);
+  assert.equal(pattern.goalMissedAverage, 2);
 });

@@ -12,6 +12,8 @@ import type {
   InsightPeriod,
   Insights,
   MoodValues,
+  SleepRegularity,
+  SleepSummary,
 } from './insight.types.js';
 
 const WEEK_DAYS = 7;
@@ -27,20 +29,52 @@ const MIN_T_STATISTIC = 2;
 const MIN_DAYS_PER_GROUP = 2;
 //Most check-ins one user can log in a day.
 const CHECKINS_PER_DAY = 10;
+//A night within this many hours of the usual sleep counts as regular.
+const REGULAR_RANGE_HOURS = 1;
+//Sleep regularity is read from this many recent nights, once at least MIN_SLEEP_NIGHTS have sleep.
+const SLEEP_WINDOW_DAYS = 14;
+const MIN_SLEEP_NIGHTS = 5;
+//Standard deviation of nightly sleep (hours) up to which sleep counts as steady, then as varying.
+const STEADY_MAX_HOURS = 0.75;
+const VARIES_MAX_HOURS = 1.5;
 
 //A recorded value, or null for a missing one or 0: a band sync leaves water at 0 on days it was
 //never logged, and a band that was not worn reports 0 steps and 0 sleep.
 const recorded = (value: number | null): number | null =>
   value != null && Number.isFinite(value) && value > 0 ? value : null;
 
+//What a factor's "met" depends on besides the day itself.
+type FactorContext = { goals: Goals; usualSleep: number | null };
+
+//A factor's value for a day, and whether it was met; null from `met` when it cannot be judged.
 const FACTORS: Record<
   InsightFactor,
-  { value: (day: HabitValues) => number | null; goal: (goals: Goals) => number }
+  {
+    value: (day: HabitValues) => number | null;
+    met: (value: number, context: FactorContext) => boolean | null;
+  }
 > = {
-  SLEEP: { value: (day) => recorded(day.sleepHours), goal: (goals) => goals.sleep },
-  STEPS: { value: (day) => recorded(day.steps), goal: (goals) => goals.steps },
-  WATER: { value: (day) => recorded(day.waterGlasses), goal: (goals) => goals.water },
+  SLEEP: { value: (day) => recorded(day.sleepHours), met: (v, { goals }) => v >= goals.sleep },
+  STEPS: { value: (day) => recorded(day.steps), met: (v, { goals }) => v >= goals.steps },
+  WATER: { value: (day) => recorded(day.waterGlasses), met: (v, { goals }) => v >= goals.water },
+  REGULAR_SLEEP: {
+    value: (day) => recorded(day.sleepHours),
+    met: (v, { usualSleep }) =>
+      usualSleep == null ? null : Math.abs(v - usualSleep) <= REGULAR_RANGE_HOURS,
+  },
 };
+
+//The middle value, unrounded; null for none.
+const middle = (values: number[]): number | null => {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+//Recorded sleep hours on the given days.
+const sleepHoursOf = (habits: HabitValues[]): number[] =>
+  habits.map((habit) => recorded(habit.sleepHours)).filter((h): h is number => h != null);
 
 const OUTCOMES: Record<InsightOutcome, (day: MoodValues) => number> = {
   MOOD: (day) => day.mood,
@@ -79,10 +113,11 @@ export const summarizePeriod = (
   const habitDays = inWindow(habits, start, end);
   const moodDays = inWindow(moods, start, end);
 
+  const context: FactorContext = { goals, usualSleep: null };
   const values = (factor: InsightFactor): number[] =>
     habitDays.map(FACTORS[factor].value).filter((value): value is number => value != null);
   const goalDays = (factor: InsightFactor): number =>
-    values(factor).filter((value) => value >= FACTORS[factor].goal(goals)).length;
+    values(factor).filter((value) => FACTORS[factor].met(value, context)).length;
 
   return {
     start,
@@ -172,18 +207,18 @@ export const findPatterns = (
   goals: Goals
 ): InsightPattern[] => {
   const habitByDay = new Map(habits.map((habit) => [habit.day, habit]));
+  const context: FactorContext = { goals, usualSleep: middle(sleepHoursOf(habits)) };
   const candidates: { pattern: InsightPattern; samples: Sample[]; gap: number }[] = [];
 
   for (const factor of Object.keys(FACTORS) as InsightFactor[]) {
-    const goal = FACTORS[factor].goal(goals);
-
     for (const outcome of Object.keys(OUTCOMES) as InsightOutcome[]) {
       const samples: Sample[] = [];
       for (const mood of moods) {
         const habit = habitByDay.get(mood.day);
         const value = habit ? FACTORS[factor].value(habit) : null;
-        if (value == null) continue;
-        samples.push({ day: mood.day, met: value >= goal, score: OUTCOMES[outcome](mood) });
+        const met = value == null ? null : FACTORS[factor].met(value, context);
+        if (met == null) continue;
+        samples.push({ day: mood.day, met, score: OUTCOMES[outcome](mood) });
       }
 
       const met = scores(samples, true);
@@ -226,7 +261,45 @@ export const findPatterns = (
   return kept.map((candidate) => candidate.pattern);
 };
 
-//This week and last week side by side, and patterns over the last `days` days ending today.
+//Usual sleep, how much it varies and how regular it is over the last SLEEP_WINDOW_DAYS ending
+//`today`, and the hours short of the goal over the last 7 days.
+export const summarizeSleep = (
+  habits: HabitValues[],
+  goalHours: number,
+  today: string
+): SleepSummary => {
+  const recent = sleepHoursOf(inWindow(habits, addDays(today, -(SLEEP_WINDOW_DAYS - 1)), today));
+  const week = sleepHoursOf(inWindow(habits, addDays(today, -(WEEK_DAYS - 1)), today));
+  const usual = middle(recent);
+
+  let variation: number | null = null;
+  let regularity: SleepRegularity = 'UNKNOWN';
+  if (recent.length >= MIN_SLEEP_NIGHTS) {
+    variation = Math.sqrt(variance(recent));
+    regularity =
+      variation <= STEADY_MAX_HOURS
+        ? 'STEADY'
+        : variation <= VARIES_MAX_HOURS
+          ? 'VARIES'
+          : 'IRREGULAR';
+  }
+
+  return {
+    nights: recent.length,
+    usualHours: usual == null ? null : roundTo(usual, 1),
+    variationHours: variation == null ? null : roundTo(variation, 1),
+    regularity,
+    goalHours,
+    weekNights: week.length,
+    debtHours: roundTo(
+      week.reduce((total, hours) => total + Math.max(0, goalHours - hours), 0),
+      1
+    ),
+  };
+};
+
+//This week and last week side by side, recent sleep, and patterns over the last `days` days
+//ending today.
 export const buildInsights = (
   habits: HabitValues[],
   moods: MoodValues[],
@@ -243,6 +316,7 @@ export const buildInsights = (
     days,
     thisWeek: summarizePeriod(habits, moods, goals, weekStart, today),
     lastWeek: summarizePeriod(habits, moods, goals, lastWeekStart, lastWeekEnd),
+    sleep: summarizeSleep(habits, goals.sleep, today),
     patterns: findPatterns(
       inWindow(habits, patternStart, today),
       inWindow(moods, patternStart, today),

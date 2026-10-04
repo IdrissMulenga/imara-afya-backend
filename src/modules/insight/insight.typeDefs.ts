@@ -3,6 +3,32 @@ export const insightTypeDefs = /* GraphQL */ `
     SLEEP
     STEPS
     WATER
+    "A night within an hour of the usual (median) sleep over the pattern days, rather than a goal."
+    REGULAR_SLEEP
+  }
+
+  "How regular nightly sleep is, from the spread of the last 14 nights: STEADY up to 0.75 h, VARIES up to 1.5 h, IRREGULAR above; UNKNOWN with fewer than 5 nights."
+  enum SleepRegularity {
+    STEADY
+    VARIES
+    IRREGULAR
+    UNKNOWN
+  }
+
+  "Recent sleep: the usual night, how much it varies, and the hours short of the goal this week. Bedtimes are not recorded, so regularity is about how long, not when."
+  type SleepSummary {
+    "Nights with sleep recorded in the last 14."
+    nights: Int!
+    "The median night over those nights; null without any."
+    usualHours: Float
+    "Standard deviation of those nights in hours; null with fewer than 5."
+    variationHours: Float
+    regularity: SleepRegularity!
+    goalHours: Float!
+    "Nights with sleep recorded in the last 7 days."
+    weekNights: Int!
+    "Hours short of the goal over the nights recorded in the last 7 days."
+    debtHours: Float!
   }
 
   enum InsightOutcome {
@@ -47,6 +73,7 @@ export const insightTypeDefs = /* GraphQL */ `
     thisWeek: InsightPeriod!
     "The seven days before thisWeek."
     lastWeek: InsightPeriod!
+    sleep: SleepSummary!
     "Largest gap first; empty until one qualifies. A pattern needs 5 or more days on each side, a gap of at least 0.5 that is well above day-to-day noise, and a gap that remains when a stronger pattern's habit is held fixed."
     patterns: [InsightPattern!]!
   }

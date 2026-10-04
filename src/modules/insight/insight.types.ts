@@ -1,4 +1,6 @@
-export type InsightFactor = 'SLEEP' | 'STEPS' | 'WATER';
+//REGULAR_SLEEP is met on a night within an hour of the usual (median) sleep.
+export type InsightFactor = 'SLEEP' | 'STEPS' | 'WATER' | 'REGULAR_SLEEP';
+export type SleepRegularity = 'STEADY' | 'VARIES' | 'IRREGULAR' | 'UNKNOWN';
 export type InsightOutcome = 'MOOD' | 'ENERGY';
 
 //One day's habit values; steps and sleepHours are null until the band syncs them.
@@ -49,9 +51,26 @@ export interface InsightPattern {
   difference: number;
 }
 
+//How long and how regularly the user sleeps, over recent nights.
+export interface SleepSummary {
+  //Nights with sleep recorded in the last 14.
+  nights: number;
+  //The median night over those nights; null without any.
+  usualHours: number | null;
+  //Standard deviation of those nights; null with fewer than 5.
+  variationHours: number | null;
+  regularity: SleepRegularity;
+  goalHours: number;
+  //Nights with sleep recorded in the last 7 days.
+  weekNights: number;
+  //Hours short of the goal over the nights recorded in the last 7 days.
+  debtHours: number;
+}
+
 export interface Insights {
   days: number;
   thisWeek: InsightPeriod;
   lastWeek: InsightPeriod;
+  sleep: SleepSummary;
   patterns: InsightPattern[];
 }
