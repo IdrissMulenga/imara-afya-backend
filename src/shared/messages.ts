@@ -41,6 +41,8 @@ const en: Table = {
   [ErrorCode.PASSWORD_UNCHANGED]: 'That is already your password. Please choose a different one.',
   [ErrorCode.SESSION_EXPIRED]: 'Your session has expired. Please sign in.',
   [ErrorCode.TOKEN_REVOKED]: 'You have been signed out. Please sign in again.',
+  'TOKEN_REVOKED.DEVICE_REMOVED':
+    'This phone was removed from your trusted devices. Please sign in again.',
   [ErrorCode.UNAUTHENTICATED]: 'You need to be signed in.',
   'UNAUTHENTICATED.ACCOUNT_GONE': 'That account no longer exists.',
   [ErrorCode.FORBIDDEN]: 'You cannot do that.',
@@ -127,6 +129,8 @@ const fr: Table = {
   [ErrorCode.PASSWORD_UNCHANGED]: 'C’est déjà votre mot de passe. Choisissez-en un autre.',
   [ErrorCode.SESSION_EXPIRED]: 'Votre session a expiré. Veuillez vous reconnecter.',
   [ErrorCode.TOKEN_REVOKED]: 'Vous avez été déconnecté. Veuillez vous reconnecter.',
+  'TOKEN_REVOKED.DEVICE_REMOVED':
+    'Ce téléphone a été retiré de vos appareils de confiance. Veuillez vous reconnecter.',
   [ErrorCode.UNAUTHENTICATED]: 'Vous devez être connecté.',
   'UNAUTHENTICATED.ACCOUNT_GONE': 'Ce compte n’existe plus.',
   [ErrorCode.FORBIDDEN]: 'Vous ne pouvez pas faire cela.',
@@ -213,6 +217,8 @@ const sw: Table = {
   [ErrorCode.PASSWORD_UNCHANGED]: 'Hiyo tayari ni nywila yako. Chagua nyingine.',
   [ErrorCode.SESSION_EXPIRED]: 'Kipindi chako kimeisha. Tafadhali ingia tena.',
   [ErrorCode.TOKEN_REVOKED]: 'Umetolewa. Tafadhali ingia tena.',
+  'TOKEN_REVOKED.DEVICE_REMOVED':
+    'Simu hii imeondolewa kwenye vifaa vyako vinavyoaminika. Tafadhali ingia tena.',
   [ErrorCode.UNAUTHENTICATED]: 'Unahitaji kuingia.',
   'UNAUTHENTICATED.ACCOUNT_GONE': 'Akaunti hiyo haipo tena.',
   [ErrorCode.FORBIDDEN]: 'Huwezi kufanya hivyo.',
@@ -299,6 +305,8 @@ const rn: Table = {
   [ErrorCode.PASSWORD_UNCHANGED]: 'Iryo ni ryo usanzwe ufise. Hitamwo irindi.',
   [ErrorCode.SESSION_EXPIRED]: 'Igihe cawe carangiye. Injira bushasha.',
   [ErrorCode.TOKEN_REVOKED]: 'Warasohowe. Injira bushasha.',
+  'TOKEN_REVOKED.DEVICE_REMOVED':
+    'Iyi telefone yakuwe mu bikoresho vyawe vyizewe. Injira bushasha.',
   [ErrorCode.UNAUTHENTICATED]: 'Utegerezwa kwinjira.',
   'UNAUTHENTICATED.ACCOUNT_GONE': 'Iyo konte ntikiriho.',
   [ErrorCode.FORBIDDEN]: 'Ntushobora gukora ivyo.',

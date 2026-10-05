@@ -68,12 +68,6 @@ export const sendCode = async (params: {
     await checkCanIssue(params.user._id, params.purpose);
   }
 
-  //Retires any earlier live code for this purpose.
-  await Otp.updateMany(
-    { user: params.user._id, purpose: params.purpose, consumedAt: null },
-    { $set: { consumedAt: new Date() } }
-  );
-
   const code = generateCode();
   const expiresAt = minutesFromNow(env.OTP_TTL_MINUTES);
   const purgeAt = minutesFromNow(env.OTP_TTL_MINUTES + 120);
@@ -89,7 +83,8 @@ export const sendCode = async (params: {
     ip: params.ip,
   });
 
-  //Removes a code that was never delivered, so it does not count toward the limits.
+  //Removes a code that was never delivered, so it does not count toward the limits and the
+  //earlier code still works.
   try {
     await sendOtpEmail({
       to: params.user.email,
@@ -101,6 +96,12 @@ export const sendCode = async (params: {
     await Otp.deleteOne({ _id: saved._id }).catch(() => {});
     throw error;
   }
+
+  //Delivered: retires any earlier live code for this purpose.
+  await Otp.updateMany(
+    { user: params.user._id, purpose: params.purpose, consumedAt: null, _id: { $ne: saved._id } },
+    { $set: { consumedAt: new Date() } }
+  );
 
   return expiresAt;
 };

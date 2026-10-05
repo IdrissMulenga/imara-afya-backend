@@ -9,6 +9,8 @@ import { upsertWithRetry } from '../../shared/upsert.js';
 
 //Maximum trusted devices per user.
 const MAX_DEVICES = 20;
+//How often a device in use has its last-seen time and trust window extended.
+const TOUCH_EVERY_MS = 24 * 60 * 60 * 1000;
 
 //Deletes the least recently seen devices beyond MAX_DEVICES.
 const evictBeyondCap = async (userId: Types.ObjectId): Promise<void> => {
@@ -99,6 +101,22 @@ export const touchDevice = async (userId: Types.ObjectId, deviceId: string): Pro
     { user: userId, deviceId },
     { $set: { lastSeenAt: new Date(), expiresAt: daysFromNow(env.DEVICE_TRUST_DAYS) } }
   );
+};
+
+//True when the device a session was signed in on is still trusted; false once it was removed.
+//While it is in use, its last-seen time and trust window are extended at most once a day.
+export const sessionDeviceActive = async (
+  userId: Types.ObjectId,
+  deviceId: string
+): Promise<boolean> => {
+  const device = await Device.findOne({ user: userId, deviceId }).select({ lastSeenAt: 1 }).lean();
+  if (!device) return false;
+  if (Date.now() - device.lastSeenAt.getTime() > TOUCH_EVERY_MS) {
+    void touchDevice(userId, deviceId).catch((error) =>
+      console.error('[device] could not extend trust:', error)
+    );
+  }
+  return true;
 };
 
 //The trusted devices, most recently seen first; current marks the one making the request.

@@ -1,6 +1,6 @@
 import type { Request } from 'express';
 import { User, type IUser } from '../../modules/user/index.js';
-import { verifyToken } from '../../modules/auth/index.js';
+import { sessionDeviceActive, verifyToken } from '../../modules/auth/index.js';
 import { appError, ErrorCode } from '../errors.js';
 
 export interface CallerIdentity {
@@ -29,6 +29,16 @@ export const getUserFromRequest = async (req: Request): Promise<CallerIdentity> 
   //Rejects tokens issued before the last logout or password change.
   if (claims.tokenVersion !== user.tokenVersion) {
     throw appError(ErrorCode.TOKEN_REVOKED, 'You have been signed out. Please sign in again.');
+  }
+
+  //Rejects a session whose device was removed from the trusted devices. Tokens from before
+  //devices were recorded carry none and are not checked.
+  if (claims.deviceId && !(await sessionDeviceActive(user._id, claims.deviceId))) {
+    throw appError(
+      ErrorCode.TOKEN_REVOKED,
+      'This phone was removed from your trusted devices. Please sign in again.',
+      { reason: 'DEVICE_REMOVED' }
+    );
   }
 
   return { user, sessionOrigin: claims.origin, sessionDeviceId: claims.deviceId };

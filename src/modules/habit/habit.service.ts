@@ -128,7 +128,11 @@ type DeviceValues = {
 //The update for one day: each value is kept from the higher-ranked source. On a tie, steps keep the
 //higher count (the phone carried most) and sleep takes the new value.
 const deviceUpdate = ({ steps, sleep }: DeviceValues) => {
-  const set: Record<string, unknown> = { waterGlasses: { $ifNull: ['$waterGlasses', 0] } };
+  const set: Record<string, unknown> = {
+    waterGlasses: { $ifNull: ['$waterGlasses', 0] },
+    createdAt: { $ifNull: ['$createdAt', '$$NOW'] },
+    updatedAt: '$$NOW',
+  };
   if (steps) {
     const incoming = STEPS_RANK[steps.source] as number;
     const stored = storedRank('steps', 'stepsSource', STEPS_RANK);
@@ -197,6 +201,7 @@ export const syncDeviceDays = async (
         HabitLog.updateOne({ user: user._id, day }, deviceUpdate(values), {
           upsert: true,
           updatePipeline: true,
+          timestamps: false,
         })
       )
     )
