@@ -9,6 +9,8 @@ export interface HabitValues {
   waterGlasses: number;
   steps: number | null;
   sleepHours: number | null;
+  //ESTIMATE when sleepHours is an estimate from the sleep schedule.
+  sleepSource?: string | null;
 }
 
 //One day's average mood and energy across its check-ins.

@@ -45,6 +45,8 @@ export interface HabitDay {
   waterGlasses: number;
   steps: number | null;
   sleepHours: number | null;
+  //ESTIMATE when sleepHours is an estimate from the sleep schedule.
+  sleepSource?: string | null;
 }
 
 export interface AchievementGoals {

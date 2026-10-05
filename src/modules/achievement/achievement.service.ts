@@ -61,10 +61,14 @@ export const personalBest = (
 
 //Every badge with its progress, and the personal bests, from the habit days and check-in days.
 export const buildAchievements = (
-  habits: HabitDay[],
+  allHabits: HabitDay[],
   checkInDays: string[],
   goals: AchievementGoals
 ): Achievements => {
+  //Nights estimated from the sleep schedule are not the user's sleep: no badge, best or activity.
+  const habits = allHabits.map((h) =>
+    h.sleepSource === 'ESTIMATE' ? { ...h, sleepHours: null } : h
+  );
   const metDays: Record<StreakMetric, string[]> = {
     WATER: habits
       .filter((h) => h.waterGlasses > 0 && h.waterGlasses >= goals.water)
@@ -168,7 +172,7 @@ export const buildAchievements = (
 export const getAchievements = async (user: IUser): Promise<Achievements> => {
   const [habits, checkInDays] = await Promise.all([
     HabitLog.find({ user: user._id })
-      .select('day waterGlasses steps sleepHours')
+      .select('day waterGlasses steps sleepHours stepsSource sleepSource')
       .sort({ day: -1 })
       .limit(MAX_DAYS)
       .lean<HabitDay[]>(),

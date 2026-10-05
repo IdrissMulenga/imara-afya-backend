@@ -258,3 +258,18 @@ test('mood after regular nights is compared with irregular ones', () => {
   assert.equal(pattern.goalMetAverage, 4);
   assert.equal(pattern.goalMissedAverage, 2);
 });
+
+test('nights estimated from the sleep schedule are left out of sleep insights', () => {
+  //Ten identical estimated nights, and three real ones that vary a lot.
+  const habits = [
+    ...series(10, () => ({ habit: { sleepHours: 8.5, sleepSource: 'ESTIMATE' }, mood: 3 })).habits,
+    habit(addDays(TODAY, -11), { sleepHours: 4 }),
+    habit(addDays(TODAY, -12), { sleepHours: 9 }),
+    habit(addDays(TODAY, -13), { sleepHours: 5 }),
+  ];
+  const s = summarizeSleep(habits, 8, TODAY);
+  assert.equal(s.nights, 3);
+  assert.equal(s.weekNights, 0);
+  assert.equal(s.regularity, 'UNKNOWN');
+  assert.equal(s.debtHours, 0);
+});

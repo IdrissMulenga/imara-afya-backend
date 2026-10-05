@@ -74,6 +74,7 @@ const en: Table = {
   'BAD_USER_INPUT.INVALID_TIMEZONE': 'That timezone is not recognised.',
   'BAD_USER_INPUT.INVALID_TIME': 'That time is not valid.',
   'BAD_USER_INPUT.INVALID_CLIENT_ID': 'That entry id is not valid.',
+  'BAD_USER_INPUT.INVALID_SOURCE': 'That source cannot send {field}.',
   'BAD_USER_INPUT.PERIOD_ONGOING': 'A period is already in progress.',
   'BAD_USER_INPUT.VITAL_INCOMPLETE':
     'Blood pressure needs both numbers, blood sugar a value and when it was measured, and a pulse its beats per minute.',
@@ -160,6 +161,7 @@ const fr: Table = {
   'BAD_USER_INPUT.INVALID_TIMEZONE': 'Ce fuseau horaire n’est pas reconnu.',
   'BAD_USER_INPUT.INVALID_TIME': 'Cette heure n’est pas valide.',
   'BAD_USER_INPUT.INVALID_CLIENT_ID': 'Cet identifiant d’entrée n’est pas valide.',
+  'BAD_USER_INPUT.INVALID_SOURCE': 'Cette source ne peut pas envoyer : {field}.',
   'BAD_USER_INPUT.PERIOD_ONGOING': 'Des règles sont déjà en cours.',
   'BAD_USER_INPUT.VITAL_INCOMPLETE':
     'La tension demande les deux chiffres, la glycémie une valeur et le moment de la mesure, et le pouls ses battements par minute.',
@@ -245,6 +247,7 @@ const sw: Table = {
   'BAD_USER_INPUT.INVALID_TIMEZONE': 'Saa za eneo hilo hazitambuliki.',
   'BAD_USER_INPUT.INVALID_TIME': 'Saa hiyo si sahihi.',
   'BAD_USER_INPUT.INVALID_CLIENT_ID': 'Kitambulisho hicho cha kumbukumbu si sahihi.',
+  'BAD_USER_INPUT.INVALID_SOURCE': 'Chanzo hicho hakiwezi kutuma {field}.',
   'BAD_USER_INPUT.PERIOD_ONGOING': 'Tayari uko kwenye hedhi.',
   'BAD_USER_INPUT.VITAL_INCOMPLETE':
     'Shinikizo la damu linahitaji namba zote mbili, sukari kipimo na wakati kilipopimwa, na mapigo ya moyo idadi kwa dakika.',
@@ -331,6 +334,7 @@ const rn: Table = {
   'BAD_USER_INPUT.INVALID_TIMEZONE': 'Iyo saha y’akarere ntiyamenyekanye.',
   'BAD_USER_INPUT.INVALID_TIME': 'Iyo saha si yo.',
   'BAD_USER_INPUT.INVALID_CLIENT_ID': 'Iryo zina ry’ivyanditswe si ryo.',
+  'BAD_USER_INPUT.INVALID_SOURCE': 'Iyo nkomoko ntishobora kurungika {field}.',
   'BAD_USER_INPUT.PERIOD_ONGOING': 'Uri mu mihango ubu.',
   'BAD_USER_INPUT.VITAL_INCOMPLETE':
     'Umuvuduko w’amaraso usaba ibiharuro vyompi, isukari igipimo n’igihe yapimwe, n’imitima itera ingene itera ku munota.',

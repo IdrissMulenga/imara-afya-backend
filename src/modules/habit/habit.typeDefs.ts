@@ -1,4 +1,12 @@
 export const habitTypeDefs = /* GraphQL */ `
+  "Where a day's steps or sleep came from. A value replaces the stored one only from a source ranked at least as high: steps BAND > PHONE; sleep MANUAL > BAND > PHONE > ESTIMATE."
+  enum DataSource {
+    BAND
+    PHONE
+    MANUAL
+    ESTIMATE
+  }
+
   "One day of water, steps and sleep. day is YYYY-MM-DD in the user's timezone."
   type HabitDay {
     day: String!
@@ -7,6 +15,12 @@ export const habitTypeDefs = /* GraphQL */ `
     steps: Int
     "Sleep that ended on this day, synced from the paired band (syncBand); null means not yet synced."
     sleepHours: Float
+    "Where steps came from (BAND or PHONE); null before the first sync or for older values."
+    stepsSource: DataSource
+    "Where sleepHours came from; null for older values."
+    sleepSource: DataSource
+    "True when sleepHours is an estimate from the sleep schedule (sleepSource ESTIMATE). Estimates are left out of streaks, insights and badges."
+    sleepEstimated: Boolean!
   }
 
   "Consecutive days, ending today (or yesterday), on which each goal was met."

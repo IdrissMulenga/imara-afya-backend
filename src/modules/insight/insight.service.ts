@@ -43,6 +43,10 @@ const VARIES_MAX_HOURS = 1.5;
 const recorded = (value: number | null): number | null =>
   value != null && Number.isFinite(value) && value > 0 ? value : null;
 
+//Sleep that was measured or entered; null for a night estimated from the schedule.
+const measuredSleep = (day: HabitValues): number | null =>
+  day.sleepSource === 'ESTIMATE' ? null : recorded(day.sleepHours);
+
 //What a factor's "met" depends on besides the day itself.
 type FactorContext = { goals: Goals; usualSleep: number | null };
 
@@ -54,11 +58,11 @@ const FACTORS: Record<
     met: (value: number, context: FactorContext) => boolean | null;
   }
 > = {
-  SLEEP: { value: (day) => recorded(day.sleepHours), met: (v, { goals }) => v >= goals.sleep },
+  SLEEP: { value: measuredSleep, met: (v, { goals }) => v >= goals.sleep },
   STEPS: { value: (day) => recorded(day.steps), met: (v, { goals }) => v >= goals.steps },
   WATER: { value: (day) => recorded(day.waterGlasses), met: (v, { goals }) => v >= goals.water },
   REGULAR_SLEEP: {
-    value: (day) => recorded(day.sleepHours),
+    value: measuredSleep,
     met: (v, { usualSleep }) =>
       usualSleep == null ? null : Math.abs(v - usualSleep) <= REGULAR_RANGE_HOURS,
   },
@@ -72,9 +76,9 @@ const middle = (values: number[]): number | null => {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 };
 
-//Recorded sleep hours on the given days.
+//Measured sleep hours on the given days (estimates left out).
 const sleepHoursOf = (habits: HabitValues[]): number[] =>
-  habits.map((habit) => recorded(habit.sleepHours)).filter((h): h is number => h != null);
+  habits.map(measuredSleep).filter((h): h is number => h != null);
 
 const OUTCOMES: Record<InsightOutcome, (day: MoodValues) => number> = {
   MOOD: (day) => day.mood,
@@ -335,7 +339,7 @@ export const getInsights = async (user: IUser, days?: number | null): Promise<In
 
   const [habits, checkIns] = await Promise.all([
     HabitLog.find({ user: user._id, day: range })
-      .select('day waterGlasses steps sleepHours')
+      .select('day waterGlasses steps sleepHours stepsSource sleepSource')
       .sort({ day: -1 })
       .limit(span)
       .lean<HabitValues[]>(),

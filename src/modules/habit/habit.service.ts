@@ -1,5 +1,5 @@
 import type { IUser } from '../user/index.js';
-import { HabitLog, type IHabitLog } from './habit.model.js';
+import { HabitLog, type DataSource, type IHabitLog } from './habit.model.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { checkDay, inRange, resolveDay } from '../../shared/validation.js';
 import { addDays, dayInZone, streakLength } from '../../shared/datetime.js';
@@ -27,12 +27,18 @@ const HISTORY_MAX_DAYS = 90;
 
 const toHabitDay = (
   day: string,
-  log?: Pick<IHabitLog, 'waterGlasses' | 'steps' | 'sleepHours'> | null
+  log?: Pick<
+    IHabitLog,
+    'waterGlasses' | 'steps' | 'sleepHours' | 'stepsSource' | 'sleepSource'
+  > | null
 ): HabitDay => ({
   day,
   waterGlasses: log?.waterGlasses ?? 0,
   steps: log?.steps ?? null,
   sleepHours: log?.sleepHours ?? null,
+  stepsSource: log?.steps != null ? (log.stepsSource ?? null) : null,
+  sleepSource: log?.sleepHours != null ? (log.sleepSource ?? null) : null,
+  sleepEstimated: log?.sleepHours != null && log.sleepSource === 'ESTIMATE',
 });
 
 //Sets the given values for one day, creating the day if needed.
@@ -76,8 +82,81 @@ export const logHabits = async (user: IUser, input: LogHabitsInput): Promise<Hab
   return toHabitDay(day, saved);
 };
 
-//Writes the band's daily steps and sleep. Values are totals, so a retried sync changes nothing;
-//days in the future or more than MAX_BACKDATE_DAYS ago are skipped.
+//How much each source is trusted; a value replaces the stored one only from a source ranked at
+//least as high. A value saved before sources were recorded ranks as PHONE.
+export const STEPS_RANK: Partial<Record<DataSource, number>> = { BAND: 3, PHONE: 2 };
+export const SLEEP_RANK: Record<DataSource, number> = { MANUAL: 4, BAND: 3, PHONE: 2, ESTIMATE: 1 };
+const LEGACY_RANK = 2;
+
+//The stored value's rank, read inside the update so two phones syncing at once cannot overwrite
+//each other: 0 with no value, LEGACY_RANK with a value but no source.
+const storedRank = (
+  valueField: string,
+  sourceField: string,
+  ranks: Partial<Record<DataSource, number>>
+) => ({
+  $switch: {
+    branches: Object.entries(ranks).map(([source, rank]) => ({
+      case: { $eq: [`$${sourceField}`, source] },
+      then: rank,
+    })),
+    default: { $cond: [{ $eq: [{ $ifNull: [`$${valueField}`, null] }, null] }, 0, LEGACY_RANK] },
+  },
+});
+
+//Checks a value's source against the sources allowed for it; PHONE when missing.
+const checkSource = (
+  source: DataSource | null | undefined,
+  ranks: Partial<Record<DataSource, number>>,
+  field: 'steps' | 'sleep'
+): DataSource => {
+  const value = source ?? 'PHONE';
+  if (!(value in ranks)) {
+    throw appError(ErrorCode.BAD_USER_INPUT, `That source cannot send ${field}.`, {
+      reason: 'INVALID_SOURCE',
+      field,
+    });
+  }
+  return value;
+};
+
+type DeviceValues = {
+  steps?: { value: number; source: DataSource };
+  sleep?: { value: number; source: DataSource };
+};
+
+//The update for one day: each value is kept from the higher-ranked source. On a tie, steps keep the
+//higher count (the phone carried most) and sleep takes the new value.
+const deviceUpdate = ({ steps, sleep }: DeviceValues) => {
+  const set: Record<string, unknown> = { waterGlasses: { $ifNull: ['$waterGlasses', 0] } };
+  if (steps) {
+    const incoming = STEPS_RANK[steps.source] as number;
+    const stored = storedRank('steps', 'stepsSource', STEPS_RANK);
+    set.steps = {
+      $cond: [
+        { $gt: [incoming, stored] },
+        steps.value,
+        { $cond: [{ $eq: [incoming, stored] }, { $max: ['$steps', steps.value] }, '$steps'] },
+      ],
+    };
+    set.stepsSource = {
+      $cond: [{ $gte: [incoming, stored] }, { $literal: steps.source }, '$stepsSource'],
+    };
+  }
+  if (sleep) {
+    const incoming = SLEEP_RANK[sleep.source];
+    const stored = storedRank('sleepHours', 'sleepSource', SLEEP_RANK);
+    set.sleepHours = { $cond: [{ $gte: [incoming, stored] }, sleep.value, '$sleepHours'] };
+    set.sleepSource = {
+      $cond: [{ $gte: [incoming, stored] }, { $literal: sleep.source }, '$sleepSource'],
+    };
+  }
+  return [{ $set: set }];
+};
+
+//Writes daily steps and sleep from the account's devices. Values are totals, so a retried sync
+//changes nothing; a value from a lower-ranked source than the stored one is ignored. Days in the
+//future or more than MAX_BACKDATE_DAYS ago are skipped.
 export const syncDeviceDays = async (
   user: IUser,
   entries: DeviceDayInput[]
@@ -85,7 +164,7 @@ export const syncDeviceDays = async (
   const today = dayInZone(new Date(), user.timezone);
   const oldest = addDays(today, -MAX_BACKDATE_DAYS);
 
-  const byDay = new Map<string, Partial<Record<'steps' | 'sleepHours', number>>>();
+  const byDay = new Map<string, DeviceValues>();
   let skippedDays = 0;
 
   for (const entry of entries) {
@@ -95,31 +174,35 @@ export const syncDeviceDays = async (
       continue;
     }
 
-    const set = byDay.get(day) ?? {};
+    const values = byDay.get(day) ?? {};
     if (entry.steps != null) {
-      set.steps = Math.round(inRange(entry.steps, 0, MAX_STEPS, 'steps'));
+      values.steps = {
+        value: Math.round(inRange(entry.steps, 0, MAX_STEPS, 'steps')),
+        source: checkSource(entry.stepsSource, STEPS_RANK, 'steps'),
+      };
     }
     if (entry.sleepHours != null) {
-      set.sleepHours = roundTo(inRange(entry.sleepHours, 0, MAX_SLEEP, 'sleep'), 2);
+      values.sleep = {
+        value: roundTo(inRange(entry.sleepHours, 0, MAX_SLEEP, 'sleep'), 2),
+        source: checkSource(entry.sleepSource, SLEEP_RANK, 'sleep'),
+      };
     }
-    byDay.set(day, set);
+    byDay.set(day, values);
   }
 
-  const writes = [...byDay]
-    .filter(([, set]) => Object.keys(set).length > 0)
-    .map(([day, set]) => ({
-      updateOne: {
-        filter: { user: user._id, day },
-        update: { $set: set, $setOnInsert: { waterGlasses: 0 } },
-        upsert: true,
-      },
-    }));
+  const days = [...byDay].filter(([, values]) => values.steps || values.sleep);
+  await Promise.all(
+    days.map(([day, values]) =>
+      upsertWithRetry(() =>
+        HabitLog.updateOne({ user: user._id, day }, deviceUpdate(values), {
+          upsert: true,
+          updatePipeline: true,
+        })
+      )
+    )
+  );
 
-  if (writes.length > 0) {
-    await upsertWithRetry(() => HabitLog.bulkWrite(writes, { ordered: false }));
-  }
-
-  return { syncedDays: writes.length, skippedDays };
+  return { syncedDays: days.length, skippedDays };
 };
 
 //Adds glasses of water to one day (negative removes), kept within 0..MAX_WATER.
@@ -189,7 +272,11 @@ export const getSummary = async (user: IUser): Promise<HabitSummary> => {
     streaks: {
       water: metGoal((log) => log.waterGlasses, user.waterGoalGlasses),
       steps: metGoal((log) => log.steps, user.stepGoal),
-      sleep: metGoal((log) => log.sleepHours, user.sleepGoalHours),
+      //Nights estimated from the schedule do not count toward the sleep streak.
+      sleep: metGoal(
+        (log) => (log.sleepSource === 'ESTIMATE' ? null : log.sleepHours),
+        user.sleepGoalHours
+      ),
     },
   };
 };

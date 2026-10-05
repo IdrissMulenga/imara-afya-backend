@@ -29,10 +29,14 @@ export const bandTypeDefs = /* GraphQL */ `
   input BandDayInput {
     day: String!
     steps: Int
+    "Where steps came from: BAND or PHONE (the default)."
+    stepsSource: DataSource
     sleepHours: Float
+    "Where sleepHours came from: MANUAL (set by hand), BAND, PHONE (the default) or ESTIMATE (from the sleep schedule)."
+    sleepSource: DataSource
   }
 
-  "Daily totals read from the paired band, at most 62 days. Values replace what is stored, so resending a sync is safe."
+  "Daily totals from the account's devices, at most 62 days. A value replaces the stored one only from a source ranked at least as high (see DataSource), so a phone cannot undo the band or real sleep, and resending a sync is safe."
   input SyncBandInput {
     bandId: String!
     firmware: String

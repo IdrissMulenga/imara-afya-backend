@@ -20,7 +20,7 @@ export const buildExport = async (user: IUser) => {
   const mine = { user: user._id };
   const [habits, checkIns, periods, cycleDays, weights, band, devices, vitals] = await Promise.all([
     HabitLog.find(mine)
-      .select('day waterGlasses steps sleepHours')
+      .select('day waterGlasses steps sleepHours stepsSource sleepSource')
       .sort({ day: 1 })
       .limit(MAX_ROWS)
       .lean(),
@@ -84,6 +84,8 @@ export const buildExport = async (user: IUser) => {
       waterGlasses: h.waterGlasses,
       steps: h.steps,
       sleepHours: h.sleepHours,
+      stepsSource: h.steps != null ? (h.stepsSource ?? null) : null,
+      sleepSource: h.sleepHours != null ? (h.sleepSource ?? null) : null,
     })),
     checkIns: checkIns.map((c) => ({
       day: c.day,

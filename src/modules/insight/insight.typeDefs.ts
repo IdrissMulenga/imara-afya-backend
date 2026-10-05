@@ -15,7 +15,7 @@ export const insightTypeDefs = /* GraphQL */ `
     UNKNOWN
   }
 
-  "Recent sleep: the usual night, how much it varies, and the hours short of the goal this week. Bedtimes are not recorded, so regularity is about how long, not when."
+  "Recent sleep: the usual night, how much it varies, and the hours short of the goal this week. Bedtimes are not recorded, so regularity is about how long, not when. Nights estimated from the sleep schedule are left out."
   type SleepSummary {
     "Nights with sleep recorded in the last 14."
     nights: Int!

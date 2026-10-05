@@ -94,3 +94,21 @@ test('first check-in, first week and the weight goal', () => {
   assert.equal(noGoal.earnedCount, 0);
   assert.equal(noGoal.badges.length, 14);
 });
+
+test('sleep estimated from the schedule earns no badge, best or activity', () => {
+  const estimated = days(START, 10).map((day) =>
+    habit(day, { sleepHours: 8.5, sleepSource: 'ESTIMATE' })
+  );
+  const result = buildAchievements(estimated, [], goals);
+  const byId = Object.fromEntries(result.badges.map((b) => [b.id, b]));
+  assert.equal(byId.SLEEP_7.earned, false);
+  assert.equal(byId.FIRST_WEEK.progress, 0);
+  assert.equal(result.longestSleep, null);
+  assert.equal(result.longestStreaks.sleep, 0);
+
+  const real = days(START, 7).map((day) => habit(day, { sleepHours: 7.5 }));
+  assert.equal(
+    buildAchievements(real, [], goals).badges.find((b) => b.id === 'SLEEP_7')!.earned,
+    true
+  );
+});
