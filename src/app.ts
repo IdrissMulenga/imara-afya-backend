@@ -33,7 +33,9 @@ export const createApp = (): Express => {
 
   app.use(
     cors({
-      origin: env.FRONTEND_URL ? env.FRONTEND_URL.split(',').map((o) => o.trim()) : true,
+      origin: env.FRONTEND_URL
+        ? env.FRONTEND_URL.split(',').map((o) => o.trim())
+        : !env.IS_PRODUCTION,
       credentials: true,
       allowedHeaders: ['Content-Type', 'Authorization', 'accept-language'],
     })
@@ -73,6 +75,15 @@ export const createApp = (): Express => {
 
   app.get('/terms', (_req, res) => {
     res.sendFile(path.resolve(process.cwd(), 'public', 'terms.html'));
+  });
+
+  //Support and account deletion pages, required by the app stores.
+  app.get('/support', (_req, res) => {
+    res.sendFile(path.resolve(process.cwd(), 'public', 'support.html'));
+  });
+
+  app.get('/delete-account', (_req, res) => {
+    res.sendFile(path.resolve(process.cwd(), 'public', 'delete-account.html'));
   });
 
   //Health check for uptime monitors (not rate limited).

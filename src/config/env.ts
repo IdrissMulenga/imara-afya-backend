@@ -71,7 +71,8 @@ export const env = {
   MAX_UPLOAD_MB: number('MAX_UPLOAD_MB', 10),
   MAX_PASSWORD_ATTEMPTS: number('MAX_PASSWORD_ATTEMPTS', 5),
 
-  //Empty allows any origin.
+  //Websites allowed to call the API from a browser, comma-separated. Empty allows any in
+  //development and none in production; the phone apps are not affected.
   FRONTEND_URL: optional('FRONTEND_URL'),
   RATE_LIMIT_WINDOW_MS: number('RATE_LIMIT_WINDOW_MS', 60_000),
   //Requests per IP per window.
@@ -96,12 +97,6 @@ if (env.IS_PRODUCTION) {
       'MONGODB_URI points at a local database in production — set it to the MongoDB Atlas connection string.'
     );
   }
-  if (!env.FRONTEND_URL) {
-    throw appError(
-      ErrorCode.CONFIG_ERROR,
-      'FRONTEND_URL must be set in production — leaving it empty allows requests from ANY origin.'
-    );
-  }
   if (!env.RESEND_API_KEY) {
     throw appError(
       ErrorCode.CONFIG_ERROR,
@@ -118,7 +113,8 @@ export const envWarnings = (): string[] => {
       'MONGODB_URI is a remote database (Atlas) in development — test data goes to the real database.'
     );
   }
-  if (!env.FRONTEND_URL) warnings.push('FRONTEND_URL is unset — CORS allows ANY origin.');
+  if (!env.FRONTEND_URL && !env.IS_PRODUCTION)
+    warnings.push('FRONTEND_URL is unset — any website may call the API in development.');
   if (!env.RESEND_API_KEY)
     warnings.push('RESEND_API_KEY is unset — codes are logged, not emailed.');
   if (env.MAIL_FROM.endsWith('@resend.dev')) {
