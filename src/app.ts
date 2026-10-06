@@ -55,6 +55,17 @@ export const createApp = (): Express => {
 
   app.use('/upload', uploadRateLimit, uploadRouter());
 
+  //Images used in emails.
+  app.use(
+    '/email',
+    express.static(path.resolve(process.cwd(), 'public', 'email'), {
+      dotfiles: 'deny',
+      index: false,
+      fallthrough: false,
+      maxAge: '30d',
+    })
+  );
+
   //Public privacy policy and terms of use pages, linked from the app and the stores (not rate limited).
   app.get('/privacy', (_req, res) => {
     res.sendFile(path.resolve(process.cwd(), 'public', 'privacy.html'));

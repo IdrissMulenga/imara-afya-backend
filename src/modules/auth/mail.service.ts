@@ -3,72 +3,11 @@ import { env } from '../../config/env.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import type { OtpPurpose } from './otp.model.js';
 import { maskEmail } from '../../shared/validation.js';
+import { exportEmail, otpEmail, type EmailLinks, type Language } from './mail.templates.js';
 
 //Sends one-time codes and the data export by email through Resend.
 const RESEND_URL = 'https://api.resend.com/emails';
 const TIMEOUT_MS = 30_000;
-
-type Language = 'en' | 'fr' | 'sw' | 'rn';
-
-//Email copy per purpose and language.
-const COPY: Record<OtpPurpose, Record<Language, { subject: string; line: string }>> = {
-  SIGNUP: {
-    en: { subject: 'is your Imara Afya code', line: 'Confirm your email address with this code.' },
-    fr: {
-      subject: 'est votre code Imara Afya',
-      line: 'Confirmez votre adresse e-mail avec ce code.',
-    },
-    sw: {
-      subject: 'ni namba yako ya Imara Afya',
-      line: 'Thibitisha barua pepe yako kwa namba hii.',
-    },
-    rn: {
-      subject: 'ni zo nomero zawe za Imara Afya',
-      line: 'Emeza imeyili yawe ukoresheje izi nomero.',
-    },
-  },
-  LOGIN: {
-    en: { subject: '— new sign-in to Imara Afya', line: 'Use this code to finish signing in.' },
-    fr: {
-      subject: '— nouvelle connexion Imara Afya',
-      line: 'Utilisez ce code pour terminer la connexion.',
-    },
-    sw: { subject: '— kuingia kupya Imara Afya', line: 'Tumia namba hii kumaliza kuingia.' },
-    rn: {
-      subject: '— kwinjira gushasha muri Imara Afya',
-      line: 'Koresha izi nomero kugira uheze kwinjira.',
-    },
-  },
-  RESET: {
-    en: {
-      subject: '— reset your Imara Afya password',
-      line: 'Use this code to set a new password.',
-    },
-    fr: {
-      subject: '— réinitialiser votre mot de passe',
-      line: 'Utilisez ce code pour changer votre mot de passe.',
-    },
-    sw: { subject: '— badilisha nywila yako', line: 'Tumia namba hii kuweka nywila mpya.' },
-    rn: {
-      subject: '— hindura ijambo ryibanga ryawe',
-      line: 'Koresha izi nomero kugira ushireho ijambo ryibanga rishasha.',
-    },
-  },
-};
-
-const WARNING: Record<Language, string> = {
-  en: "If this wasn't you, change your password.",
-  fr: "Si ce n'était pas vous, changez votre mot de passe.",
-  sw: 'Kama hukuwa wewe, badilisha nywila yako.',
-  rn: 'Nimba atari wewe, hindura ijambo ryibanga ryawe.',
-};
-
-const EXPIRES: Record<Language, (minutes: number) => string> = {
-  en: (m) => `This code expires in ${m} minutes.`,
-  fr: (m) => `Ce code expire dans ${m} minutes.`,
-  sw: (m) => `Namba hii itaisha muda baada ya dakika ${m}.`,
-  rn: (m) => `Izi nomero zizorangira mu minota ${m}.`,
-};
 
 type Mail = {
   to: string;
@@ -156,6 +95,9 @@ const deliver = async (mail: Mail): Promise<void> => {
   }
 };
 
+//The site and support address the emails link to.
+const emailLinks = (): EmailLinks => ({ publicUrl: env.PUBLIC_URL, support: env.MAIL_REPLY_TO });
+
 const codeFailure = () =>
   appError(
     ErrorCode.OTP_SEND_FAILED,
@@ -169,24 +111,13 @@ export const sendOtpEmail = async (params: {
   purpose: OtpPurpose;
   language: Language;
 }): Promise<void> => {
-  const locale = params.language;
-  const copy = COPY[params.purpose][locale];
-  const warning = params.purpose === 'SIGNUP' ? '' : WARNING[locale];
-
-  const subject = `${params.code} ${copy.subject}`;
-  const expires = EXPIRES[locale](env.OTP_TTL_MINUTES);
-
-  const html = `<!doctype html>
-<html><body style="margin:0;padding:24px;background:#f5f7f6;font-family:Helvetica,Arial,sans-serif;color:#14281f">
-  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px">
-    <p style="margin:0 0 20px;font-size:15px;line-height:1.5">${copy.line}</p>
-    <p style="margin:0 0 20px;font-size:38px;letter-spacing:8px;font-weight:700;color:#1e5e45">${params.code}</p>
-    <p style="margin:0 0 8px;font-size:13px;color:#4a6b5c">${expires}</p>
-    ${warning ? `<p style="margin:16px 0 0;font-size:13px;color:#4a6b5c">${warning}</p>` : ''}
-  </div>
-</body></html>`;
-
-  const text = [copy.line, '', params.code, '', expires, warning].filter(Boolean).join('\n');
+  const { subject, html, text } = otpEmail({
+    code: params.code,
+    purpose: params.purpose,
+    language: params.language,
+    minutes: env.OTP_TTL_MINUTES,
+    links: emailLinks(),
+  });
 
   //Development only: prints the code to the server log.
   if (!env.IS_PRODUCTION) {
@@ -209,30 +140,6 @@ export const sendOtpEmail = async (params: {
   });
 };
 
-//The data export email, per language.
-const EXPORT_COPY: Record<Language, { subject: string; line: string; care: string }> = {
-  en: {
-    subject: 'Your Imara Afya data',
-    line: 'Here is a copy of everything Imara Afya holds about you, attached as a file you can open with any text editor.',
-    care: 'It includes your health records. Keep it somewhere private, and do not forward it to anyone you do not trust.',
-  },
-  fr: {
-    subject: 'Vos données Imara Afya',
-    line: 'Voici une copie de tout ce qu’Imara Afya conserve sur vous, en pièce jointe, lisible avec n’importe quel éditeur de texte.',
-    care: 'Elle contient vos données de santé. Gardez-la en lieu sûr et ne la transférez qu’à des personnes de confiance.',
-  },
-  sw: {
-    subject: 'Data yako ya Imara Afya',
-    line: 'Hii ni nakala ya kila kitu Imara Afya inachohifadhi kukuhusu, kama faili iliyoambatishwa unayoweza kufungua kwa programu yoyote ya maandishi.',
-    care: 'Ina kumbukumbu zako za afya. Ihifadhi mahali pa faragha, na usiitume kwa mtu usiyemwamini.',
-  },
-  rn: {
-    subject: 'Amakuru yawe ya Imara Afya',
-    line: 'Iyi ni kopi y’ivyo Imara Afya ibika vyose ku bikwerekeye, nk’idosiye ifatanijwe ushobora kwugurura n’iporogaramu iyo ari yo yose y’inyandiko.',
-    care: 'Irimwo amakuru y’amagara yawe. Yibike ahantu h’ibanga, ntuyirungikire uwo utizigira.',
-  },
-};
-
 //Emails the user's data as a JSON attachment.
 export const sendDataExportEmail = async (params: {
   to: string;
@@ -240,20 +147,13 @@ export const sendDataExportEmail = async (params: {
   filename: string;
   json: string;
 }): Promise<void> => {
-  const copy = EXPORT_COPY[params.language];
-  const html = `<!doctype html>
-<html><body style="margin:0;padding:24px;background:#f5f7f6;font-family:Helvetica,Arial,sans-serif;color:#14281f">
-  <div style="max-width:480px;margin:0 auto;background:#fff;border-radius:12px;padding:32px">
-    <p style="margin:0 0 16px;font-size:15px;line-height:1.5">${copy.line}</p>
-    <p style="margin:0;font-size:13px;line-height:1.5;color:#4a6b5c">${copy.care}</p>
-  </div>
-</body></html>`;
+  const { subject, html, text } = exportEmail({ language: params.language, links: emailLinks() });
 
   await deliver({
     to: params.to,
-    subject: copy.subject,
+    subject,
     html,
-    text: [copy.line, '', copy.care].join('\n'),
+    text,
     attachments: [
       { filename: params.filename, content: Buffer.from(params.json, 'utf8').toString('base64') },
     ],

@@ -81,6 +81,8 @@ export const env = {
   RESEND_API_KEY: optional('RESEND_API_KEY'),
   MAIL_FROM: optional('MAIL_FROM', 'onboarding@resend.dev'),
   MAIL_REPLY_TO: optional('MAIL_REPLY_TO'),
+  //Public site origin for links and the logo in emails, e.g. https://afya.imaracompany.com.
+  PUBLIC_URL: optional('PUBLIC_URL'),
 
   //Development only: every code goes to this address. Ignored in production.
   MAIL_DEV_TO: optional('MAIL_DEV_TO'),
