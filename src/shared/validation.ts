@@ -134,10 +134,10 @@ export const cleanText = (raw: string, maxLength: number, field: Field): string 
 //Times may be a little ahead of the server clock, for phones whose clock runs fast.
 const CLOCK_SKEW_MS = 5 * 60_000;
 
-//Checks an ISO time from the last `maxDaysBack` days (not in the future).
-export const checkPastTime = (raw: string, maxDaysBack: number): Date => {
+//Checks an ISO time from the last `maxDaysBack` days. A time up to CLOCK_SKEW_MS ahead is taken
+//as now, so it is never filed under a day that has not started yet.
+export const checkPastTime = (raw: string, maxDaysBack: number, now = Date.now()): Date => {
   const at = new Date(raw);
-  const now = Date.now();
   if (
     Number.isNaN(at.getTime()) ||
     at.getTime() > now + CLOCK_SKEW_MS ||
@@ -145,7 +145,7 @@ export const checkPastTime = (raw: string, maxDaysBack: number): Date => {
   ) {
     throw appError(ErrorCode.BAD_USER_INPUT, 'That time is not valid.', { reason: 'INVALID_TIME' });
   }
-  return at;
+  return at.getTime() > now ? new Date(now) : at;
 };
 
 //Checks an id the app made for an entry, so a resent entry is recognised: 8-64 letters, digits,

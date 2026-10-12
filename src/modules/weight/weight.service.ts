@@ -81,11 +81,12 @@ const saveDay = (user: IUser, day: string, kg: number) =>
     ).lean()
   );
 
-//Sets the profile's weightKg to the newest logged day, if there is one.
+//Sets the profile's weightKg to the newest logged day, or clears it when none is left.
 const syncProfile = async (user: IUser): Promise<void> => {
   const latest = await WeightLog.findOne({ user: user._id }).sort({ day: -1 }).lean();
-  if (latest && user.weightKg !== latest.kg) {
-    user.weightKg = latest.kg;
+  const kg = latest?.kg ?? null;
+  if (user.weightKg !== kg) {
+    user.weightKg = kg;
     await user.save();
   }
 };

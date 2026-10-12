@@ -40,7 +40,7 @@ export const updateProfile = async (user: IUser, input: UpdateProfileInput): Pro
     user.heightCm = orNull(input.heightCm, (cm) => inRange(cm, 50, 260, 'height'));
   }
   if (input.weightKg !== undefined) {
-    user.weightKg = orNull(input.weightKg, (kg) => inRange(kg, 20, 400, 'weight'));
+    user.weightKg = orNull(input.weightKg, (kg) => roundTo(inRange(kg, 20, 400, 'weight'), 1));
   }
   if (input.birthDate !== undefined) {
     user.birthDate = orNull(input.birthDate, (raw) => {
