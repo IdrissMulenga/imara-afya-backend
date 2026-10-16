@@ -6,3 +6,4 @@ export { Device } from './device.model.js';
 export { verifyToken } from './token.service.js';
 export { sessionDeviceActive } from './device.service.js';
 export { sendDataExportEmail } from './mail.service.js';
+export { confirmProviderReauth, revokeAppleSignIns } from './identity.service.js';

@@ -2,6 +2,8 @@ export const authTypeDefs = /* GraphQL */ `
   type AuthPayload {
     token: String!
     user: User!
+    "True only when signInWithGoogle / signInWithApple just created the account."
+    newAccount: Boolean
   }
 
   "Returned by login when the phone is not trusted. Carries NO token."
@@ -72,6 +74,29 @@ export const authTypeDefs = /* GraphQL */ `
     deviceLabel: String
   }
 
+  input GoogleSignInInput {
+    idToken: String!
+    deviceId: String!
+    deviceSecret: String!
+    deviceLabel: String
+    language: Language
+  }
+
+  input AppleSignInInput {
+    identityToken: String!
+    "The raw nonce; the token carries its SHA-256."
+    nonce: String!
+    "Exchanged for a refresh token kept to revoke the sign-in when the account is deleted."
+    authorizationCode: String
+    "Apple sends the name only on the first sign-in."
+    givenName: String
+    familyName: String
+    deviceId: String!
+    deviceSecret: String!
+    deviceLabel: String
+    language: Language
+  }
+
   input ChangePasswordInput {
     currentPassword: String!
     newPassword: String!
@@ -84,6 +109,10 @@ export const authTypeDefs = /* GraphQL */ `
   extend type Mutation {
     signup(input: SignUpInput!): AuthPayload!
     login(input: LoginInput!): LoginResult!
+    "Signs in, links or creates an account with Google. No emailed code on a new phone."
+    signInWithGoogle(input: GoogleSignInInput!): AuthPayload!
+    "Signs in, links or creates an account with Apple. No emailed code on a new phone."
+    signInWithApple(input: AppleSignInInput!): AuthPayload!
 
     verifyEmailOtp(input: VerifyEmailOtpInput!): User!
     resendEmailOtp: Boolean!

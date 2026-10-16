@@ -44,6 +44,13 @@ const secret = (key: string): string => {
 export const isLocalDatabase = (uri: string): boolean =>
   /^mongodb:\/\/([^@/]*@)?(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|\?|$)/i.test(uri);
 
+//Reads a comma-separated list, dropping blanks.
+const list = (key: string): string[] =>
+  optional(key)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
 const NODE_ENV = optional('NODE_ENV', 'development');
 
 export const env = {
@@ -87,7 +94,29 @@ export const env = {
 
   //Development only: every code goes to this address. Ignored in production.
   MAIL_DEV_TO: optional('MAIL_DEV_TO'),
+
+  //Google OAuth client ids whose ID tokens are accepted; empty turns Google sign-in off.
+  GOOGLE_CLIENT_IDS: list('GOOGLE_CLIENT_IDS'),
+  APPLE_BUNDLE_ID: optional('APPLE_BUNDLE_ID', 'bi.imaraco.imaraafya'),
+  //Sign in with Apple key; with it, Apple sign-ins are stored and revoked on account deletion.
+  APPLE_TEAM_ID: optional('APPLE_TEAM_ID'),
+  APPLE_KEY_ID: optional('APPLE_KEY_ID'),
+  APPLE_PRIVATE_KEY: optional('APPLE_PRIVATE_KEY').replace(/\\n/g, '\n'),
+  //32 bytes as hex; encrypts the stored Apple refresh tokens.
+  TOKEN_ENCRYPTION_KEY: optional('TOKEN_ENCRYPTION_KEY'),
 } as const;
+
+//True when the Apple key is set, so Apple sign-ins can be revoked.
+export const appleKeyConfigured = (): boolean =>
+  Boolean(env.APPLE_TEAM_ID && env.APPLE_KEY_ID && env.APPLE_PRIVATE_KEY);
+
+if (appleKeyConfigured() && !/^[0-9a-f]{64}$/i.test(env.TOKEN_ENCRYPTION_KEY)) {
+  throw appError(
+    ErrorCode.CONFIG_ERROR,
+    'TOKEN_ENCRYPTION_KEY must be 64 hex characters when the Apple key is set. ' +
+      'Generate one with: openssl rand -hex 32'
+  );
+}
 
 //Settings required in production.
 if (env.IS_PRODUCTION) {
@@ -126,6 +155,12 @@ export const envWarnings = (): string[] => {
   if (env.MAIL_DEV_TO) {
     warnings.push(
       `MAIL_DEV_TO is set — EVERY code goes to ${env.MAIL_DEV_TO}, not to the account it is for.`
+    );
+  }
+  if (env.IS_PRODUCTION && !appleKeyConfigured()) {
+    warnings.push(
+      'The Apple key (APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY) is unset — deleting an ' +
+        'account cannot revoke its Sign in with Apple, which Apple requires.'
     );
   }
   return warnings;

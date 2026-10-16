@@ -1,6 +1,6 @@
 import type { Model } from 'mongoose';
 import { User, type IUser } from './user.model.js';
-import { Otp, Device } from '../auth/index.js';
+import { Otp, Device, confirmProviderReauth, revokeAppleSignIns } from '../auth/index.js';
 import { clearAvatar } from '../upload/index.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { passwordMatches } from '../../shared/password.js';
@@ -12,7 +12,7 @@ import { CycleDay, CyclePeriod } from '../cycle/index.js';
 import { Band } from '../band/index.js';
 import { WeightLog, recordProfileWeight } from '../weight/index.js';
 import { VitalReading } from '../vital/index.js';
-import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
+import type { UpdateProfileInput, PreferencesInput, DeleteAccountInput } from './user.types.js';
 
 //Loads a user or throws ACCOUNT_NOT_FOUND.
 export const getUser = async (id: string): Promise<IUser> => {
@@ -128,11 +128,24 @@ const purgeUser = async (user: IUser): Promise<void> => {
 };
 
 //Closes the account at once (signed out everywhere, unusable), then erases all its data.
+//A password confirms it; an account without one confirms with a fresh Google or Apple sign-in.
 //If erasing fails part-way, purgeDeletedUsers finishes it.
-export const deleteAccount = async (user: IUser, password: string): Promise<boolean> => {
-  if (!(await passwordMatches(user, password))) {
-    throw appError(ErrorCode.WRONG_PASSWORD, 'That password is not right.');
+export const deleteAccount = async (user: IUser, input: DeleteAccountInput): Promise<boolean> => {
+  if (user.passwordHash) {
+    if (!input.password || !(await passwordMatches(user, input.password))) {
+      throw appError(ErrorCode.WRONG_PASSWORD, 'That password is not right.');
+    }
+  } else if (input.password && !input.googleIdToken && !input.apple) {
+    throw appError(
+      ErrorCode.WRONG_PASSWORD,
+      'This account has no password yet. Use “Forgot password” to set one.',
+      { reason: 'NO_PASSWORD' }
+    );
+  } else {
+    await confirmProviderReauth(user, input);
   }
+
+  await revokeAppleSignIns(user._id);
 
   user.deletedAt = new Date();
   user.tokenVersion += 1;

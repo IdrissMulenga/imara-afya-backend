@@ -36,6 +36,17 @@ const en: Table = {
   'INVALID_RESET_TOKEN.USED': 'That reset request has already been used. Please start again.',
   'INVALID_RESET_TOKEN.INVALID': 'That reset link is not valid.',
   [ErrorCode.WRONG_PASSWORD]: 'That is not your current password.',
+  'WRONG_PASSWORD.NO_PASSWORD':
+    'This account has no password yet. Use “Forgot password” to set one.',
+  [ErrorCode.PROVIDER_TOKEN_INVALID]: 'That sign-in did not work. Please try again.',
+  'PROVIDER_TOKEN_INVALID.EXPIRED': 'That sign-in took too long. Please try again.',
+  'PROVIDER_TOKEN_INVALID.NONCE': 'That sign-in did not work. Please try again.',
+  [ErrorCode.PROVIDER_NOT_CONFIGURED]:
+    'This way of signing in is not available yet. Please use your email.',
+  [ErrorCode.ACCOUNT_EXISTS]:
+    'An account with this email already exists. Please sign in with your email and password.',
+  [ErrorCode.WRONG_ACCOUNT]:
+    'That is not the account linked to Imara Afya. Please use the same one you signed in with.',
   [ErrorCode.PASSWORD_ATTEMPTS_EXCEEDED]:
     'Too many incorrect attempts. Please reset your password by email instead.',
   [ErrorCode.PASSWORD_UNCHANGED]: 'That is already your password. Please choose a different one.',
@@ -124,6 +135,17 @@ const fr: Table = {
   'INVALID_RESET_TOKEN.USED': 'Cette demande a déjà été utilisée. Veuillez recommencer.',
   'INVALID_RESET_TOKEN.INVALID': 'Ce lien de réinitialisation n’est pas valide.',
   [ErrorCode.WRONG_PASSWORD]: 'Ce n’est pas votre mot de passe actuel.',
+  'WRONG_PASSWORD.NO_PASSWORD':
+    'Ce compte n’a pas encore de mot de passe. Utilisez « Mot de passe oublié » pour en créer un.',
+  [ErrorCode.PROVIDER_TOKEN_INVALID]: 'La connexion n’a pas fonctionné. Veuillez réessayer.',
+  'PROVIDER_TOKEN_INVALID.EXPIRED': 'La connexion a pris trop de temps. Veuillez réessayer.',
+  'PROVIDER_TOKEN_INVALID.NONCE': 'La connexion n’a pas fonctionné. Veuillez réessayer.',
+  [ErrorCode.PROVIDER_NOT_CONFIGURED]:
+    'Ce mode de connexion n’est pas encore disponible. Utilisez votre e-mail.',
+  [ErrorCode.ACCOUNT_EXISTS]:
+    'Un compte existe déjà avec cet e-mail. Connectez-vous avec votre e-mail et votre mot de passe.',
+  [ErrorCode.WRONG_ACCOUNT]:
+    'Ce n’est pas le compte lié à Imara Afya. Utilisez celui avec lequel vous vous êtes connecté.',
   [ErrorCode.PASSWORD_ATTEMPTS_EXCEEDED]:
     'Trop de tentatives. Réinitialisez plutôt votre mot de passe par e-mail.',
   [ErrorCode.PASSWORD_UNCHANGED]: 'C’est déjà votre mot de passe. Choisissez-en un autre.',
@@ -212,6 +234,17 @@ const sw: Table = {
   'INVALID_RESET_TOKEN.USED': 'Ombi hilo tayari limetumika. Tafadhali anza upya.',
   'INVALID_RESET_TOKEN.INVALID': 'Kiungo hicho cha kuweka upya si sahihi.',
   [ErrorCode.WRONG_PASSWORD]: 'Hiyo si nywila yako ya sasa.',
+  'WRONG_PASSWORD.NO_PASSWORD':
+    'Akaunti hii bado haina nywila. Tumia “Umesahau nywila” kuweka moja.',
+  [ErrorCode.PROVIDER_TOKEN_INVALID]: 'Kuingia hakukufanikiwa. Tafadhali jaribu tena.',
+  'PROVIDER_TOKEN_INVALID.EXPIRED': 'Kuingia kumechukua muda mrefu. Tafadhali jaribu tena.',
+  'PROVIDER_TOKEN_INVALID.NONCE': 'Kuingia hakukufanikiwa. Tafadhali jaribu tena.',
+  [ErrorCode.PROVIDER_NOT_CONFIGURED]:
+    'Njia hii ya kuingia bado haipatikani. Tafadhali tumia barua pepe yako.',
+  [ErrorCode.ACCOUNT_EXISTS]:
+    'Akaunti yenye barua pepe hii tayari ipo. Tafadhali ingia kwa barua pepe na nywila yako.',
+  [ErrorCode.WRONG_ACCOUNT]:
+    'Hiyo si akaunti iliyounganishwa na Imara Afya. Tafadhali tumia ile uliyoingia nayo.',
   [ErrorCode.PASSWORD_ATTEMPTS_EXCEEDED]:
     'Majaribio mengi mno. Tafadhali weka upya nywila kwa barua pepe.',
   [ErrorCode.PASSWORD_UNCHANGED]: 'Hiyo tayari ni nywila yako. Chagua nyingine.',
@@ -300,6 +333,16 @@ const rn: Table = {
   'INVALID_RESET_TOKEN.USED': 'Ico gisabisho carakoreshejwe. Tangura bushasha.',
   'INVALID_RESET_TOKEN.INVALID': 'Ico gisabisho si co.',
   [ErrorCode.WRONG_PASSWORD]: 'Iryo si ryo jambo ryibanga usanzwe ufise.',
+  'WRONG_PASSWORD.NO_PASSWORD':
+    'Iyi konte ntiragira ijambo ryibanga. Koresha “Wibagiye ijambo ryibanga” kugira uritore.',
+  [ErrorCode.PROVIDER_TOKEN_INVALID]: 'Kwinjira ntivyakunze. Subira ugerageze.',
+  'PROVIDER_TOKEN_INVALID.EXPIRED': 'Kwinjira vyatwaye umwanya munini. Subira ugerageze.',
+  'PROVIDER_TOKEN_INVALID.NONCE': 'Kwinjira ntivyakunze. Subira ugerageze.',
+  [ErrorCode.PROVIDER_NOT_CONFIGURED]:
+    'Ubu buryo bwo kwinjira ntiburaboneka. Koresha imeyili yawe.',
+  [ErrorCode.ACCOUNT_EXISTS]:
+    'Hari konte isanzwe ifise iyi meyili. Injira ukoresheje imeyili n’ijambo ryibanga ryawe.',
+  [ErrorCode.WRONG_ACCOUNT]: 'Iyo si yo konte ifatanye na Imara Afya. Koresha iyo winjiyemwo.',
   [ErrorCode.PASSWORD_ATTEMPTS_EXCEEDED]:
     'Waragerageje kenshi cane. Hindura ijambo ryibanga ukoresheje imeyili.',
   [ErrorCode.PASSWORD_UNCHANGED]: 'Iryo ni ryo usanzwe ufise. Hitamwo irindi.',

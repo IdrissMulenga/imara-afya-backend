@@ -46,9 +46,31 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
+export interface GoogleSignInInput {
+  idToken: string;
+  deviceId: string;
+  deviceSecret: string;
+  deviceLabel?: string;
+  language?: 'en' | 'fr' | 'sw' | 'rn';
+}
+
+export interface AppleSignInInput {
+  identityToken: string;
+  nonce: string;
+  authorizationCode?: string | null;
+  givenName?: string | null;
+  familyName?: string | null;
+  deviceId: string;
+  deviceSecret: string;
+  deviceLabel?: string;
+  language?: 'en' | 'fr' | 'sw' | 'rn';
+}
+
 export interface AuthPayload {
   token: string;
   user: IUser;
+  //True only when a Google or Apple sign-in just created the account.
+  newAccount?: boolean;
 }
 
 //Returned by login on an untrusted device: a code was sent, no token yet.

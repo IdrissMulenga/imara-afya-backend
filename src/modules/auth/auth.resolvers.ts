@@ -11,6 +11,8 @@ import type {
   VerifyResetOtpInput,
   ResetPasswordInput,
   ChangePasswordInput,
+  GoogleSignInInput,
+  AppleSignInInput,
   LoginResult,
   AuthPayload,
 } from './auth.types.js';
@@ -29,6 +31,14 @@ export const authResolvers = {
 
     login: safe((args: { input: LoginInput }, context) =>
       authService.login({ ...args.input, ip: context.ip })
+    ),
+
+    signInWithGoogle: safe((args: { input: GoogleSignInInput }, context) =>
+      authService.signInWithGoogle({ ...args.input, ip: context.ip })
+    ),
+
+    signInWithApple: safe((args: { input: AppleSignInInput }, context) =>
+      authService.signInWithApple({ ...args.input, ip: context.ip })
     ),
 
     verifyLoginOtp: safe((args: { email: string; input: VerifyOtpInput }) =>
@@ -85,6 +95,7 @@ export const authResolvers = {
 
   AuthPayload: {
     user: (payload: AuthPayload): IUser => payload.user,
+    newAccount: (payload: AuthPayload): boolean => payload.newAccount ?? false,
   },
 
   OtpChallenge: {

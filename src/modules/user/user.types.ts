@@ -21,3 +21,10 @@ export interface PreferencesInput {
   sleepWeekendBedtime?: string | null;
   sleepWeekendWakeTime?: string | null;
 }
+
+//A password for accounts with one; otherwise a fresh Google or Apple sign-in.
+export interface DeleteAccountInput {
+  password?: string | null;
+  googleIdToken?: string | null;
+  apple?: { identityToken: string; nonce: string } | null;
+}

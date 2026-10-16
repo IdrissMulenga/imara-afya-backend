@@ -1,8 +1,17 @@
 export const userTypeDefs = /* GraphQL */ `
+  enum SignInMethod {
+    PASSWORD
+    GOOGLE
+    APPLE
+  }
+
   type User {
     id: ID!
     email: String!
     emailVerified: Boolean!
+    "False for an account made with Google or Apple until a password is set."
+    hasPassword: Boolean!
+    signInMethods: [SignInMethod!]!
 
     name: String!
     photoUrl: String!
@@ -77,8 +86,16 @@ export const userTypeDefs = /* GraphQL */ `
     sleepWeekendWakeTime: String
   }
 
+  input AppleReauthInput {
+    identityToken: String!
+    nonce: String!
+  }
+
+  "A password for accounts with one; otherwise a fresh Google or Apple sign-in."
   input DeleteAccountInput {
-    password: String!
+    password: String
+    googleIdToken: String
+    apple: AppleReauthInput
   }
 
   extend type Query {

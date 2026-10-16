@@ -1,5 +1,5 @@
 import bcrypt from 'bcryptjs';
-import { User, getUser, type IUser } from '../user/index.js';
+import { User, getUser, type IUser, type Identity, type Provider } from '../user/index.js';
 import { env } from '../../config/env.js';
 import { appError, ErrorCode } from '../../shared/errors.js';
 import { hashPassword, passwordMatches, setPassword } from '../../shared/password.js';
@@ -10,6 +10,7 @@ import {
   checkDeviceId,
   checkDeviceSecret,
   maskEmail,
+  cleanText,
 } from '../../shared/validation.js';
 import { signToken, signResetToken, verifyResetToken, isSessionTooOld } from './token.service.js';
 import { codeNotValid, sendCode, sendCodeBestEffort, verifyCode } from './otp.service.js';
@@ -18,11 +19,20 @@ import { Device } from './device.model.js';
 import { Otp } from './otp.model.js';
 import { minutesFromNow } from '../../shared/datetime.js';
 import { createFailureCounter } from '../../shared/failures.js';
+import {
+  verifyGoogleToken,
+  verifyAppleToken,
+  linkDecision,
+  sealedAppleRefreshToken,
+  type ProviderClaims,
+} from './identity.service.js';
 import type {
   SignUpInput,
   LoginInput,
   ResetPasswordInput,
   ChangePasswordInput,
+  GoogleSignInInput,
+  AppleSignInInput,
   AuthPayload,
   LoginResult,
   ResetTicket,
@@ -106,8 +116,9 @@ export const login = async (input: LoginInput & { ip: string }): Promise<LoginRe
     if (!trusted) throw loginLocked(lockedFor);
   }
 
-  //Compares against a dummy hash so an unknown email takes as long as a known one.
-  if (!user) {
+  //Compares against a dummy hash so an unknown email, or an account without a password, takes
+  //as long as a known one.
+  if (!user || !user.passwordHash) {
     await bcrypt.compare(input.password, DUMMY_HASH);
     loginFailures.record(email);
     throw invalidCredentials();
@@ -279,6 +290,14 @@ export const changePassword = async (
 ): Promise<AuthPayload> => {
   checkPassword(input.newPassword);
 
+  if (!user.passwordHash) {
+    throw appError(
+      ErrorCode.WRONG_PASSWORD,
+      'This account has no password yet. Use “Forgot password” to set one.',
+      { reason: 'NO_PASSWORD' }
+    );
+  }
+
   if (user.failedPasswordAttempts >= env.MAX_PASSWORD_ATTEMPTS) {
     throw appError(
       ErrorCode.PASSWORD_ATTEMPTS_EXCEEDED,
@@ -312,6 +331,148 @@ export const refreshSession = (
     throw appError(ErrorCode.SESSION_EXPIRED, 'Please sign in again to continue.');
   }
   return makeSession(user, deviceId, new Date(origin));
+};
+
+//A checked Google or Apple sign-in with the device it came from.
+interface ProviderSignIn {
+  provider: Provider;
+  claims: ProviderClaims;
+  deviceId: string;
+  deviceSecret: string;
+  deviceLabel?: string;
+  language?: IUser['language'];
+  name: string;
+  appleRefreshToken?: string | null;
+  ip: string;
+}
+
+//Name from the provider, or '' when it is unusable.
+const providerName = (raw: string): string => {
+  try {
+    return cleanText(raw, 80, 'name');
+  } catch {
+    return '';
+  }
+};
+
+//Finds the account by its provider identity, links it by verified email, or creates it.
+const signInWithProvider = async (p: ProviderSignIn): Promise<AuthPayload> => {
+  const trustThisDevice = (user: IUser) =>
+    trustDevice({
+      userId: user._id,
+      deviceId: p.deviceId,
+      deviceSecret: p.deviceSecret,
+      label: p.deviceLabel,
+    });
+
+  const known = await User.findOne({
+    identities: { $elemMatch: { provider: p.provider, subject: p.claims.subject } },
+    deletedAt: null,
+  });
+  if (known) {
+    await trustThisDevice(known);
+    return makeSession(known, p.deviceId);
+  }
+
+  const email = tryNormalizeEmail(p.claims.email);
+  if (!email) throw appError(ErrorCode.PROVIDER_TOKEN_INVALID, 'That sign-in did not work.');
+
+  const identity: Identity = {
+    provider: p.provider,
+    subject: p.claims.subject,
+    email,
+    linkedAt: new Date(),
+    appleRefreshToken: p.appleRefreshToken ?? null,
+  };
+  const name = providerName(p.name);
+
+  const owner = await User.findOne({ email });
+  if (owner) {
+    if (owner.deletedAt || linkDecision(p.claims.emailVerified, owner.emailVerified) !== 'link') {
+      throw appError(
+        ErrorCode.ACCOUNT_EXISTS,
+        'An account with this email already exists. Please sign in with your email and password.'
+      );
+    }
+    owner.identities.push(identity);
+    if (!owner.name && name) owner.name = name;
+    await owner.save();
+    await trustThisDevice(owner);
+    return makeSession(owner, p.deviceId);
+  }
+
+  const user = await User.create({
+    email,
+    passwordHash: null,
+    emailVerified: p.claims.emailVerified,
+    emailVerifiedAt: p.claims.emailVerified ? new Date() : null,
+    name,
+    identities: [identity],
+    ...(p.language ? { language: p.language } : {}),
+  });
+
+  //If a later step fails, the account is removed again, as in signup.
+  try {
+    await trustThisDevice(user);
+    if (!user.emailVerified) {
+      await sendCodeBestEffort({ user, purpose: 'SIGNUP', ip: p.ip, skipCooldown: true });
+    }
+    return { ...makeSession(user, p.deviceId), newAccount: true };
+  } catch (error) {
+    await Promise.all([
+      User.deleteOne({ _id: user._id }),
+      Device.deleteMany({ user: user._id }),
+      Otp.deleteMany({ user: user._id }),
+    ]).catch((cleanup) => console.error('[auth] could not undo failed sign-in:', cleanup));
+    throw error;
+  }
+};
+
+//Signs in, links or creates an account from a Google ID token.
+export const signInWithGoogle = async (
+  input: GoogleSignInInput & { ip: string }
+): Promise<AuthPayload> => {
+  if (env.GOOGLE_CLIENT_IDS.length === 0) {
+    throw appError(
+      ErrorCode.PROVIDER_NOT_CONFIGURED,
+      'This way of signing in is not available yet. Please use your email.'
+    );
+  }
+  const deviceId = checkDeviceId(input.deviceId);
+  const deviceSecret = checkDeviceSecret(input.deviceSecret);
+  const claims = await verifyGoogleToken(input.idToken);
+
+  return signInWithProvider({
+    provider: 'google',
+    claims,
+    deviceId,
+    deviceSecret,
+    deviceLabel: input.deviceLabel,
+    language: input.language,
+    name: claims.name,
+    ip: input.ip,
+  });
+};
+
+//Signs in, links or creates an account from a Sign in with Apple identity token.
+export const signInWithApple = async (
+  input: AppleSignInInput & { ip: string }
+): Promise<AuthPayload> => {
+  const deviceId = checkDeviceId(input.deviceId);
+  const deviceSecret = checkDeviceSecret(input.deviceSecret);
+  const claims = await verifyAppleToken(input.identityToken, input.nonce);
+
+  return signInWithProvider({
+    provider: 'apple',
+    claims,
+    deviceId,
+    deviceSecret,
+    deviceLabel: input.deviceLabel,
+    language: input.language,
+    name: [input.givenName, input.familyName].filter(Boolean).join(' '),
+    appleRefreshToken: await sealedAppleRefreshToken(input.authorizationCode),
+    ip: input.ip,
+  });
 };
 
 //Bumping tokenVersion signs out every device, not just this one.

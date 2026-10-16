@@ -3,7 +3,7 @@ import { emailMyData } from './export.service.js';
 import { withUser } from '../../shared/resolve.js';
 import { calculateBMI } from '../../shared/numbers.js';
 import type { IUser } from './user.model.js';
-import type { UpdateProfileInput, PreferencesInput } from './user.types.js';
+import type { UpdateProfileInput, PreferencesInput, DeleteAccountInput } from './user.types.js';
 
 export const userResolvers = {
   Query: {
@@ -20,8 +20,8 @@ export const userResolvers = {
       userService.setPreferences(user, args.input)
     ),
 
-    deleteAccount: withUser((user, args: { input: { password: string } }) =>
-      userService.deleteAccount(user, args.input.password)
+    deleteAccount: withUser((user, args: { input: DeleteAccountInput }) =>
+      userService.deleteAccount(user, args.input)
     ),
 
     emailMyData: withUser((user) => emailMyData(user)),
@@ -32,5 +32,10 @@ export const userResolvers = {
     birthDate: (user: IUser) => user.birthDate?.toISOString() ?? null,
     createdAt: (user: IUser) => user.createdAt.toISOString(),
     bmi: (user: IUser) => calculateBMI(user.heightCm, user.weightKg),
+    hasPassword: (user: IUser) => Boolean(user.passwordHash),
+    signInMethods: (user: IUser) => [
+      ...(user.passwordHash ? ['PASSWORD'] : []),
+      ...[...new Set(user.identities.map((identity) => identity.provider.toUpperCase()))],
+    ],
   },
 };

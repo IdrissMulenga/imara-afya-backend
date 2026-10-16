@@ -55,6 +55,14 @@ export const buildExport = async (user: IUser) => {
     profile: {
       email: user.email,
       emailVerified: user.emailVerified,
+      signInMethods: [
+        ...(user.passwordHash ? [{ method: 'password' }] : []),
+        ...user.identities.map((identity) => ({
+          method: identity.provider,
+          email: identity.email,
+          linkedAt: iso(identity.linkedAt),
+        })),
+      ],
       name: user.name,
       photoUrl: user.photoUrl || null,
       gender: user.gender,

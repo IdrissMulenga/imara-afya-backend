@@ -145,6 +145,21 @@ const RULES: Record<string, Rule> = {
     ],
   },
 
+  signInWithGoogle: {
+    keyBy: 'ip',
+    budgets: [
+      { windowMs: 10 * MINUTE, max: 30 },
+      { windowMs: DAY, max: 300 },
+    ],
+  },
+  signInWithApple: {
+    keyBy: 'ip',
+    budgets: [
+      { windowMs: 10 * MINUTE, max: 30 },
+      { windowMs: DAY, max: 300 },
+    ],
+  },
+
   verifyEmailOtp: { keyBy: 'user', budgets: CODE_CHECKS },
   verifyLoginOtp: { keyBy: 'ip+email', budgets: CODE_CHECKS },
   verifyPasswordResetOtp: { keyBy: 'ip+email', budgets: CODE_CHECKS },

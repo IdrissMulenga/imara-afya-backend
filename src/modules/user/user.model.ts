@@ -1,9 +1,24 @@
 import { Schema, model, type Document, type Types } from 'mongoose';
 
+export type Provider = 'google' | 'apple';
+
+//A Google or Apple account linked for sign-in.
+export interface Identity {
+  provider: Provider;
+  //The provider's permanent user id.
+  subject: string;
+  email: string;
+  linkedAt: Date;
+  //Apple only, encrypted; revoked when the account is deleted.
+  appleRefreshToken?: string | null;
+}
+
 export interface IUser extends Document {
   _id: Types.ObjectId;
   email: string;
-  passwordHash: string;
+  //Null for an account made with Google or Apple until a password is set.
+  passwordHash: string | null;
+  identities: Identity[];
 
   emailVerified: boolean;
   emailVerifiedAt: Date | null;
@@ -47,10 +62,22 @@ export interface IUser extends Document {
 //HH:MM, 24-hour.
 const CLOCK_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+const identitySchema = new Schema<Identity>(
+  {
+    provider: { type: String, enum: ['google', 'apple'], required: true },
+    subject: { type: String, required: true },
+    email: { type: String, default: '', lowercase: true, trim: true },
+    linkedAt: { type: Date, default: () => new Date() },
+    appleRefreshToken: { type: String, default: null, select: false },
+  },
+  { _id: false }
+);
+
 const userSchema = new Schema<IUser>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-    passwordHash: { type: String, required: true },
+    passwordHash: { type: String, default: null },
+    identities: { type: [identitySchema], default: [] },
 
     emailVerified: { type: Boolean, default: false },
     emailVerifiedAt: { type: Date, default: null },
@@ -87,5 +114,10 @@ const userSchema = new Schema<IUser>(
 );
 
 userSchema.index({ deletedAt: 1 }, { partialFilterExpression: { deletedAt: { $type: 'date' } } });
+//One Google or Apple account belongs to one user.
+userSchema.index(
+  { 'identities.provider': 1, 'identities.subject': 1 },
+  { unique: true, partialFilterExpression: { 'identities.subject': { $type: 'string' } } }
+);
 
 export const User = model<IUser>('User', userSchema);
