@@ -45,12 +45,6 @@ export const isLocalDatabase = (uri: string): boolean =>
   /^mongodb:\/\/([^@/]*@)?(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|\?|$)/i.test(uri);
 
 //Reads a comma-separated list, dropping blanks.
-const list = (key: string): string[] =>
-  optional(key)
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
-
 const NODE_ENV = optional('NODE_ENV', 'development');
 
 export const env = {
@@ -95,8 +89,10 @@ export const env = {
   //Development only: every code goes to this address. Ignored in production.
   MAIL_DEV_TO: optional('MAIL_DEV_TO'),
 
-  //Google OAuth client ids whose ID tokens are accepted; empty turns Google sign-in off.
-  GOOGLE_CLIENT_IDS: list('GOOGLE_CLIENT_IDS'),
+  //Google OAuth Web client id: the app asks Google for tokens made out to it. Empty turns Google sign-in off.
+  GOOGLE_WEB_CLIENT_ID: optional('GOOGLE_WEB_CLIENT_ID'),
+  //Google OAuth iOS client id, needed by the iPhone app's Google sheet.
+  GOOGLE_IOS_CLIENT_ID: optional('GOOGLE_IOS_CLIENT_ID'),
   APPLE_BUNDLE_ID: optional('APPLE_BUNDLE_ID', 'bi.imaraco.imaraafya'),
   //Sign in with Apple key; with it, Apple sign-ins are stored and revoked on account deletion.
   APPLE_TEAM_ID: optional('APPLE_TEAM_ID'),

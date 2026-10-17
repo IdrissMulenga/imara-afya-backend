@@ -87,7 +87,7 @@ const claimsOf = (payload: JWTPayload, emailVerified: boolean): ProviderClaims =
 //Checks a Google ID token issued for one of our client ids.
 export const verifyGoogleToken = async (
   idToken: string,
-  audiences: string[] = env.GOOGLE_CLIENT_IDS
+  audiences: string[] = [env.GOOGLE_WEB_CLIENT_ID, env.GOOGLE_IOS_CLIENT_ID].filter(Boolean)
 ): Promise<ProviderClaims> => {
   const payload = await verify(idToken, googleKeys(), GOOGLE_ISSUERS, audiences);
   const verified = payload.email_verified === true || payload.email_verified === 'true';

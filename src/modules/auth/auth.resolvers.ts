@@ -19,6 +19,8 @@ import type {
 
 export const authResolvers = {
   Query: {
+    signInOptions: safe(() => authService.signInOptions()),
+
     myTrustedDevices: withUser((user, _a: unknown, context) =>
       listDevices(user._id, context.sessionDeviceId)
     ),

@@ -66,6 +66,11 @@ export interface AppleSignInInput {
   language?: 'en' | 'fr' | 'sw' | 'rn';
 }
 
+export interface SignInOptions {
+  googleWebClientId: string | null;
+  googleIosClientId: string | null;
+}
+
 export interface AuthPayload {
   token: string;
   user: IUser;

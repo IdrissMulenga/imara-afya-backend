@@ -102,7 +102,16 @@ export const authTypeDefs = /* GraphQL */ `
     newPassword: String!
   }
 
+  "Provider settings the app reads before anyone signs in."
+  type SignInOptions {
+    "Google OAuth Web client id; null while Google sign-in is off."
+    googleWebClientId: String
+    "Google OAuth iOS client id; null until the iPhone client exists."
+    googleIosClientId: String
+  }
+
   extend type Query {
+    signInOptions: SignInOptions!
     myTrustedDevices: [TrustedDevice!]!
   }
 

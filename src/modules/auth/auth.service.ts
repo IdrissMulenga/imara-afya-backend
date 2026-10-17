@@ -36,6 +36,7 @@ import type {
   AuthPayload,
   LoginResult,
   ResetTicket,
+  SignInOptions,
 } from './auth.types.js';
 
 const DUMMY_HASH = bcrypt.hashSync('imara-afya-timing-equaliser', 12);
@@ -428,11 +429,17 @@ const signInWithProvider = async (p: ProviderSignIn): Promise<AuthPayload> => {
   }
 };
 
+//The provider settings the app needs before anyone signs in.
+export const signInOptions = (): SignInOptions => ({
+  googleWebClientId: env.GOOGLE_WEB_CLIENT_ID || null,
+  googleIosClientId: env.GOOGLE_IOS_CLIENT_ID || null,
+});
+
 //Signs in, links or creates an account from a Google ID token.
 export const signInWithGoogle = async (
   input: GoogleSignInInput & { ip: string }
 ): Promise<AuthPayload> => {
-  if (env.GOOGLE_CLIENT_IDS.length === 0) {
+  if (!env.GOOGLE_WEB_CLIENT_ID) {
     throw appError(
       ErrorCode.PROVIDER_NOT_CONFIGURED,
       'This way of signing in is not available yet. Please use your email.'
